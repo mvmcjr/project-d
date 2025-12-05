@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -134,6 +135,8 @@ export function ChartView({ data }: ChartViewProps) {
         return viewData.filter((_, i) => i % factor === 0);
     }, [viewData]);
 
+    const [isRelative, setIsRelative] = React.useState(true);
+
     // Calculate Stats & Config (applied to viewData so stats update on zoom)
     const { stats, chartConfig } = React.useMemo(() => {
         const statsObj: Record<string, { min: number; max: number; avg: number; minPoint: any; maxPoint: any }> = {};
@@ -152,6 +155,28 @@ export function ChartView({ data }: ChartViewProps) {
 
         return { stats: statsObj, chartConfig: config };
     }, [viewData, safeHeaders, headerMap]);
+
+    // Normalize Data for Relative Mode
+    const displayData = React.useMemo(() => {
+        if (!isRelative) return chartData;
+
+        return chartData.map(row => {
+            const newRow: any = { Time: row.Time };
+            selectedSafeSeries.forEach(key => {
+                const s = stats[key];
+                const val = row[key];
+                if (typeof val === 'number' && s && (s.max - s.min) !== 0) {
+                    newRow[key] = ((val - s.min) / (s.max - s.min)) * 100;
+                    // Store original for tooltip
+                    newRow[`original_${key}`] = val;
+                } else if (typeof val === 'number') {
+                    newRow[key] = val; // Fallback if range is 0
+                    newRow[`original_${key}`] = val;
+                }
+            });
+            return newRow;
+        });
+    }, [chartData, isRelative, stats, selectedSafeSeries]);
 
     // Zoom Handlers
     const zoom = () => {
@@ -196,7 +221,7 @@ export function ChartView({ data }: ChartViewProps) {
                     </div>
                     <ChartContainer config={chartConfig} className="aspect-auto h-full w-full select-none">
                         <LineChart
-                            data={chartData}
+                            data={displayData}
                             margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
                             onMouseDown={(e: any) => e && setRefAreaLeft(e.activeLabel)}
                             onMouseMove={(e: any) => refAreaLeft !== null && e && setRefAreaRight(e.activeLabel)}
@@ -217,6 +242,8 @@ export function ChartView({ data }: ChartViewProps) {
                                 tickLine={false}
                                 axisLine={false}
                                 width={40}
+                                tickFormatter={(val) => isRelative ? `${val.toFixed(0)}%` : val}
+                                domain={isRelative ? [0, 100] : ['auto', 'auto']}
                             />
                             <ChartTooltip
                                 content={
@@ -228,6 +255,22 @@ export function ChartView({ data }: ChartViewProps) {
                                                 return `Time: ${typeof time === 'number' ? time.toFixed(2) : time}s`;
                                             }
                                             return "";
+                                        }}
+                                        formatter={(value, name, item, index, payload) => {
+                                            const key = item.dataKey as string;
+
+                                            let displayValue = value;
+
+                                            if (isRelative && payload) {
+                                                const originalVal = (payload as any)[`original_${key}`];
+                                                if (originalVal !== undefined) {
+                                                    displayValue = originalVal;
+                                                }
+                                            }
+
+                                            return typeof displayValue === 'number'
+                                                ? displayValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                                                : displayValue;
                                         }}
                                     />
                                 }
@@ -259,8 +302,19 @@ export function ChartView({ data }: ChartViewProps) {
                     <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-sm font-medium">Data Channels</CardTitle>
-                            {(left !== null) && <span className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground">Zoomed</span>}
+                            <div className="flex items-center space-x-2">
+                                <Label htmlFor="relative-mode" className="text-xs text-muted-foreground whitespace-nowrap">
+                                    Relative %
+                                </Label>
+                                <Switch
+                                    id="relative-mode"
+                                    checked={isRelative}
+                                    onCheckedChange={setIsRelative}
+                                    className="scale-75"
+                                />
+                            </div>
                         </div>
+                        {(left !== null) && <div className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground self-start">Zoomed</div>}
 
                         <div className="relative">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
