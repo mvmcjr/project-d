@@ -263,14 +263,14 @@ export function ChartView({ data }: ChartViewProps) {
                 <Card className="h-full flex flex-col border-none md:border shadow-sm">
                     <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
                         <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium">Metrics & Stats</CardTitle>
+                            <CardTitle className="text-sm font-medium">Data Channels</CardTitle>
                             {(left !== null) && <span className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground">Zoomed</span>}
                         </div>
 
                         <div className="relative">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Search metrics..."
+                                placeholder="Search channels..."
                                 className="pl-8 h-9"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -286,7 +286,7 @@ export function ChartView({ data }: ChartViewProps) {
                             <div className="divide-y text-card-foreground">
                                 {filteredHeaders.length === 0 ? (
                                     <div className="p-4 text-center text-sm text-muted-foreground">
-                                        No metrics found.
+                                        No channels found.
                                     </div>
                                 ) : (
                                     filteredHeaders.map((safeKey) => {
