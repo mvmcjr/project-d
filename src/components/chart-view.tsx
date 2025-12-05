@@ -61,10 +61,23 @@ export function ChartView({ data }: ChartViewProps) {
         const safeMap: Record<string, string> = { "Time": "Time" };
         const reverseMap: Record<string, string> = { "Time": "Time" };
         const numeric: string[] = [];
+        const usedKeys = new Set<string>();
+        usedKeys.add("Time");
 
-        data.headers.forEach(h => {
+        data.headers.forEach((h, index) => {
             if (h === "Time") return;
-            const safe = sanitizeKey(h);
+
+            // Generate stable key by stripping units (e.g. "Boost [psi]" -> "Boost")
+            // This ensures selection persists when units change
+            let base = h.replace(/\s*\[[^\]]*\]$/, '');
+            let safe = sanitizeKey(base);
+
+            // Handle duplicates (e.g. distinct sensors with same name but different units, or colliding names)
+            if (usedKeys.has(safe)) {
+                safe = `${safe}_${index}`;
+            }
+            usedKeys.add(safe);
+
             safeMap[h] = safe;
             reverseMap[safe] = h;
 
