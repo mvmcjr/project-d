@@ -7,17 +7,26 @@ import {
     XAxis,
     YAxis,
     CartesianGrid,
-    Tooltip,
     Legend,
     ResponsiveContainer,
+    ReferenceArea,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { RotateCcw } from "lucide-react";
 import { ParsedData } from "@/lib/types";
 import { calculateStats } from "@/lib/stats";
-import { Badge } from "@/components/ui/badge";
+import {
+    ChartConfig,
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+    ChartLegend,
+    ChartLegendContent
+} from "@/components/ui/chart";
 
 interface ChartViewProps {
     data: ParsedData;
@@ -34,110 +43,206 @@ const COLORS = [
     "#4f46e5", // indigo-600
 ];
 
+// Helper to sanitize keys for CSS variables
+const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, "_");
+
 export function ChartView({ data }: ChartViewProps) {
-    // Default to first 3 numeric columns that aren't Time
-    const numericHeaders = React.useMemo(() => {
-        return data.headers.filter(h => {
+    // 1. Sanitize Data & Headers
+    const { processedData, headerMap, safeHeaders } = React.useMemo(() => {
+        const safeMap: Record<string, string> = { "Time": "Time" };
+        const reverseMap: Record<string, string> = { "Time": "Time" };
+        const numeric: string[] = [];
+
+        data.headers.forEach(h => {
+            if (h === "Time") return;
+            const safe = sanitizeKey(h);
+            safeMap[h] = safe;
+            reverseMap[safe] = h;
+
             const val = data.data[0]?.[h];
-            return typeof val === 'number' && h.toLowerCase() !== 'time';
+            if (typeof val === 'number') {
+                numeric.push(safe);
+            }
         });
+
+        const newData = data.data.map(row => {
+            const newRow: Record<string, any> = { Time: row.Time };
+            Object.keys(row).forEach(k => {
+                const sKey = safeMap[k];
+                if (k !== "Time" && sKey) {
+                    newRow[sKey] = row[k];
+                }
+            });
+            return newRow;
+        });
+
+        return { processedData: newData, headerMap: reverseMap, safeHeaders: numeric };
     }, [data]);
 
-    const [selectedSeries, setSelectedSeries] = React.useState<string[]>([]);
+    const [selectedSafeSeries, setSelectedSafeSeries] = React.useState<string[]>([]);
 
+    // Zoom State
+    const [left, setLeft] = React.useState<number | null>(null);
+    const [right, setRight] = React.useState<number | null>(null);
+    const [refAreaLeft, setRefAreaLeft] = React.useState<number | null>(null);
+    const [refAreaRight, setRefAreaRight] = React.useState<number | null>(null);
+
+    // Initial selection
     React.useEffect(() => {
-        if (selectedSeries.length === 0 && numericHeaders.length > 0) {
-            setSelectedSeries(numericHeaders.slice(0, 3));
+        if (selectedSafeSeries.length === 0 && safeHeaders.length > 0) {
+            setSelectedSafeSeries(safeHeaders.slice(0, 3));
         }
-    }, [numericHeaders]);
+    }, [safeHeaders]);
 
-    const toggleSeries = (series: string) => {
-        setSelectedSeries(prev =>
-            prev.includes(series)
-                ? prev.filter(s => s !== series)
-                : [...prev, series]
+    const toggleSeries = (safeKey: string) => {
+        setSelectedSafeSeries(prev =>
+            prev.includes(safeKey)
+                ? prev.filter(s => s !== safeKey)
+                : [...prev, safeKey]
         );
     };
 
-    // Basic downsampling for performance
+    // Filter Data based on Zoom
+    const viewData = React.useMemo(() => {
+        if (left === null || right === null) return processedData;
+        return processedData.filter(d => d.Time >= left && d.Time <= right);
+    }, [processedData, left, right]);
+
+    // Downsampling for performance (applied to viewData)
     const chartData = React.useMemo(() => {
-        if (data.data.length < 2000) return data.data;
-        const factor = Math.ceil(data.data.length / 2000);
-        return data.data.filter((_, i) => i % factor === 0);
-    }, [data.data]);
+        if (viewData.length < 2000) return viewData;
+        const factor = Math.ceil(viewData.length / 2000);
+        return viewData.filter((_, i) => i % factor === 0);
+    }, [viewData]);
 
-    // Memoize stats for performance
-    const stats = React.useMemo(() => {
-        const res: Record<string, { min: number; max: number; avg: number }> = {};
-        for (const h of numericHeaders) {
-            res[h] = calculateStats(data.data, h);
-        }
-        return res;
-    }, [data.data, numericHeaders]);
+    // Calculate Stats & Config (applied to viewData so stats update on zoom)
+    const { stats, chartConfig } = React.useMemo(() => {
+        const statsObj: Record<string, { min: number; max: number; avg: number; minPoint: any; maxPoint: any }> = {};
+        const config: ChartConfig = {};
 
-    // Create a stable color map based on the header index in the full list
-    const colorMap = React.useMemo(() => {
-        const map: Record<string, string> = {};
-        numericHeaders.forEach((h, i) => {
-            map[h] = COLORS[i % COLORS.length];
+        safeHeaders.forEach((safeKey, i) => {
+            statsObj[safeKey] = calculateStats(viewData, safeKey);
+            config[safeKey] = {
+                label: headerMap[safeKey],
+                color: COLORS[i % COLORS.length],
+            };
         });
-        return map;
-    }, [numericHeaders]);
+
+        return { stats: statsObj, chartConfig: config };
+    }, [viewData, safeHeaders, headerMap]);
+
+    // Zoom Handlers
+    const zoom = () => {
+        if (refAreaLeft === refAreaRight || refAreaLeft === null || refAreaRight === null) {
+            setRefAreaLeft(null);
+            setRefAreaRight(null);
+            return;
+        }
+
+        // Ensure correct order
+        let newLeft = refAreaLeft;
+        let newRight = refAreaRight;
+        if (newLeft > newRight) [newLeft, newRight] = [newRight, newLeft];
+
+        setLeft(newLeft);
+        setRight(newRight);
+        setRefAreaLeft(null);
+        setRefAreaRight(null);
+    };
+
+    const zoomOut = () => {
+        setLeft(null);
+        setRight(null);
+        setRefAreaLeft(null);
+        setRefAreaRight(null);
+    };
+
+    // Custom Dot Component for Min/Max
+    const CustomDot = (props: any) => {
+        const { cx, cy, stroke, payload, dataKey } = props;
+        const s = stats[dataKey];
+        if (!s || !s.minPoint || !s.maxPoint) return null;
+
+        const isMin = payload.Time === s.minPoint.Time;
+        const isMax = payload.Time === s.maxPoint.Time;
+
+        if (isMin || isMax) {
+            return (
+                <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="white" strokeWidth={2} />
+            );
+        }
+        return null;
+    };
 
     return (
         <div className="flex flex-col md:flex-row h-full gap-4">
             {/* Chart Area */}
             <Card className="flex-1 flex flex-col h-full border-none shadow-none bg-transparent min-h-[400px]">
-                <CardContent className="flex-1 p-0 relative">
-                    <ResponsiveContainer width="100%" height="100%">
+                <CardContent className="flex-1 p-0 relative group">
+                    <div className="absolute top-2 right-2 z-20">
+                        {(left !== null || right !== null) && (
+                            <Button variant="outline" size="sm" onClick={zoomOut} className="gap-2 bg-background/80 backdrop-blur-sm">
+                                <RotateCcw className="h-4 w-4" />
+                                Reset Zoom
+                            </Button>
+                        )}
+                    </div>
+                    <ChartContainer config={chartConfig} className="aspect-auto h-full w-full select-none">
                         <LineChart
                             data={chartData}
-                            margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                            margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
+                            onMouseDown={(e: any) => e && setRefAreaLeft(e.activeLabel)}
+                            onMouseMove={(e: any) => refAreaLeft !== null && e && setRefAreaRight(e.activeLabel)}
+                            onMouseUp={zoom}
                         >
-                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.1} vertical={false} />
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis
                                 dataKey="Time"
                                 minTickGap={50}
                                 tickFormatter={(val) => typeof val === 'number' ? val.toFixed(1) : val}
-                                stroke="#888888"
-                                fontSize={12}
                                 tickLine={false}
                                 axisLine={false}
+                                allowDataOverflow
+                                domain={[left || 'dataMin', right || 'dataMax']}
+                                type="number"
                             />
                             <YAxis
-                                stroke="#888888"
-                                fontSize={12}
-                                tickLine={false} // clean look
+                                tickLine={false}
                                 axisLine={false}
                                 width={40}
                             />
-                            <Tooltip
-                                contentStyle={{
-                                    backgroundColor: 'hsl(var(--background))',
-                                    borderColor: 'hsl(var(--border))',
-                                    color: 'hsl(var(--foreground))',
-                                    borderRadius: 'var(--radius)',
-                                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                                }}
-                                itemStyle={{ fontSize: '12px', padding: 0 }}
-                                labelStyle={{ color: 'hsl(var(--muted-foreground))', marginBottom: '0.25rem' }}
-                                formatter={(value: any) => typeof value === 'number' ? value.toFixed(2) : value}
+                            <ChartTooltip
+                                content={
+                                    <ChartTooltipContent
+                                        className="w-[200px]"
+                                        labelFormatter={(_, payload) => {
+                                            if (payload && payload.length > 0) {
+                                                const time = payload[0].payload.Time;
+                                                return `Time: ${typeof time === 'number' ? time.toFixed(2) : time}s`;
+                                            }
+                                            return "";
+                                        }}
+                                    />
+                                }
                             />
-                            <Legend verticalAlign="top" height={36} iconType="circle" />
-                            {selectedSeries.map((s) => (
+                            <Legend content={<ChartLegendContent />} verticalAlign="top" />
+                            {selectedSafeSeries.map((s) => (
                                 <Line
                                     key={s}
                                     type="monotone"
                                     dataKey={s}
-                                    stroke={colorMap[s]}
-                                    dot={false}
+                                    stroke={`var(--color-${s})`}
                                     strokeWidth={2}
-                                    activeDot={{ r: 4, strokeWidth: 0 }}
+                                    dot={<CustomDot />}
+                                    activeDot={{ r: 6 }}
                                     isAnimationActive={false}
                                 />
                             ))}
+                            {refAreaLeft !== null && refAreaRight !== null && (
+                                <ReferenceArea x1={refAreaLeft} x2={refAreaRight} strokeOpacity={0.3} fill="hsl(var(--foreground))" fillOpacity={0.1} />
+                            )}
                         </LineChart>
-                    </ResponsiveContainer>
+                    </ChartContainer>
                 </CardContent>
             </Card>
 
@@ -145,35 +250,40 @@ export function ChartView({ data }: ChartViewProps) {
             <div className="w-full md:w-80 flex-shrink-0 flex flex-col h-[300px] md:h-full">
                 <Card className="h-full flex flex-col border-none md:border shadow-sm">
                     <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b">
-                        <CardTitle className="text-sm font-medium">Metrics & Stats</CardTitle>
+                        <div className="flex items-center justify-between">
+                            <CardTitle className="text-sm font-medium">Metrics & Stats</CardTitle>
+                            {(left !== null) && <span className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground">Zoomed</span>}
+                        </div>
                         <CardDescription className="text-xs">
-                            {selectedSeries.length} selected
+                            {selectedSafeSeries.length} selected
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="flex-1 overflow-hidden p-0">
                         <ScrollArea className="h-full">
-                            <div className="divide-y">
-                                {numericHeaders.map((header, idx) => {
-                                    const isSelected = selectedSeries.includes(header);
-                                    const color = colorMap[header];
+                            <div className="divide-y text-card-foreground">
+                                {safeHeaders.map((safeKey) => {
+                                    const isSelected = selectedSafeSeries.includes(safeKey);
+                                    const config = chartConfig[safeKey];
+                                    const color = config?.color;
+                                    const stat = stats[safeKey];
 
                                     return (
-                                        <div key={header} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
+                                        <div key={safeKey} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
                                             <div className="flex items-start gap-3">
                                                 <Checkbox
-                                                    id={header}
+                                                    id={safeKey}
                                                     checked={isSelected}
-                                                    onCheckedChange={() => toggleSeries(header)}
+                                                    onCheckedChange={() => toggleSeries(safeKey)}
                                                     className="mt-1"
                                                 />
                                                 <div className="flex-1 space-y-1">
                                                     <div className="flex items-center justify-between">
                                                         <Label
-                                                            htmlFor={header}
-                                                            className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "text-foreground" : "text-muted-foreground"}`}
+                                                            htmlFor={safeKey}
+                                                            className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "" : "text-muted-foreground"}`}
                                                             style={{ color: isSelected ? color : undefined }}
                                                         >
-                                                            {header}
+                                                            {headerMap[safeKey]}
                                                         </Label>
                                                     </div>
 
@@ -181,15 +291,15 @@ export function ChartView({ data }: ChartViewProps) {
                                                     <div className="grid grid-cols-3 gap-1 pt-1 text-[10px] text-muted-foreground">
                                                         <div className="flex flex-col">
                                                             <span className="opacity-70">Min</span>
-                                                            <span className="font-mono text-foreground">{stats[header].min.toFixed(1)}</span>
+                                                            <span className="font-mono text-foreground">{stat.min.toFixed(1)}</span>
                                                         </div>
                                                         <div className="flex flex-col">
                                                             <span className="opacity-70">Avg</span>
-                                                            <span className="font-mono text-foreground">{stats[header].avg.toFixed(1)}</span>
+                                                            <span className="font-mono text-foreground">{stat.avg.toFixed(1)}</span>
                                                         </div>
                                                         <div className="flex flex-col">
                                                             <span className="opacity-70">Max</span>
-                                                            <span className="font-mono text-foreground">{stats[header].max.toFixed(1)}</span>
+                                                            <span className="font-mono text-foreground">{stat.max.toFixed(1)}</span>
                                                         </div>
                                                     </div>
                                                 </div>
