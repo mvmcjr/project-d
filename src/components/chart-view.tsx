@@ -75,6 +75,15 @@ export function ChartView({ data }: ChartViewProps) {
         return res;
     }, [data.data, numericHeaders]);
 
+    // Create a stable color map based on the header index in the full list
+    const colorMap = React.useMemo(() => {
+        const map: Record<string, string> = {};
+        numericHeaders.forEach((h, i) => {
+            map[h] = COLORS[i % COLORS.length];
+        });
+        return map;
+    }, [numericHeaders]);
+
     return (
         <div className="flex flex-col md:flex-row h-full gap-4">
             {/* Chart Area */}
@@ -115,12 +124,12 @@ export function ChartView({ data }: ChartViewProps) {
                                 formatter={(value: any) => typeof value === 'number' ? value.toFixed(2) : value}
                             />
                             <Legend verticalAlign="top" height={36} iconType="circle" />
-                            {selectedSeries.map((s, i) => (
+                            {selectedSeries.map((s) => (
                                 <Line
                                     key={s}
                                     type="monotone"
                                     dataKey={s}
-                                    stroke={COLORS[i % COLORS.length]}
+                                    stroke={colorMap[s]}
                                     dot={false}
                                     strokeWidth={2}
                                     activeDot={{ r: 4, strokeWidth: 0 }}
@@ -146,7 +155,7 @@ export function ChartView({ data }: ChartViewProps) {
                             <div className="divide-y">
                                 {numericHeaders.map((header, idx) => {
                                     const isSelected = selectedSeries.includes(header);
-                                    const color = COLORS[selectedSeries.indexOf(header) % COLORS.length];
+                                    const color = colorMap[header];
 
                                     return (
                                         <div key={header} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
