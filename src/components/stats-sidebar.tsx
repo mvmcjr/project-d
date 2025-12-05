@@ -4,7 +4,6 @@ import * as React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ParsedData } from "@/lib/types";
-import { Separator } from "@/components/ui/separator";
 
 interface StatsSidebarProps {
     data: ParsedData;

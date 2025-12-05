@@ -8,7 +8,6 @@ import {
     YAxis,
     CartesianGrid,
     Legend,
-    ResponsiveContainer,
     ReferenceArea,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -26,7 +25,6 @@ import {
     ChartContainer,
     ChartTooltip,
     ChartTooltipContent,
-    ChartLegend,
     ChartLegendContent
 } from "@/components/ui/chart";
 
@@ -35,6 +33,23 @@ interface ChartViewProps {
 }
 
 
+
+// Custom Dot Component for Min/Max
+const CustomDot = (props: any) => {
+    const { cx, cy, stroke, payload, dataKey, stats } = props;
+    const s = stats[dataKey];
+    if (!s || !s.minPoint || !s.maxPoint) return null;
+
+    const isMin = payload.Time === s.minPoint.Time;
+    const isMax = payload.Time === s.maxPoint.Time;
+
+    if (isMin || isMax) {
+        return (
+            <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="white" strokeWidth={2} />
+        );
+    }
+    return null;
+};
 
 // Helper to sanitize keys for CSS variables
 const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, "_");
@@ -164,22 +179,7 @@ export function ChartView({ data }: ChartViewProps) {
         setRefAreaRight(null);
     };
 
-    // Custom Dot Component for Min/Max
-    const CustomDot = (props: any) => {
-        const { cx, cy, stroke, payload, dataKey } = props;
-        const s = stats[dataKey];
-        if (!s || !s.minPoint || !s.maxPoint) return null;
 
-        const isMin = payload.Time === s.minPoint.Time;
-        const isMax = payload.Time === s.maxPoint.Time;
-
-        if (isMin || isMax) {
-            return (
-                <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="white" strokeWidth={2} />
-            );
-        }
-        return null;
-    };
 
     return (
         <div className="flex flex-col md:flex-row h-full gap-4">
@@ -240,7 +240,7 @@ export function ChartView({ data }: ChartViewProps) {
                                     dataKey={s}
                                     stroke={`var(--color-${s})`}
                                     strokeWidth={2}
-                                    dot={<CustomDot />}
+                                    dot={<CustomDot stats={stats} />}
                                     activeDot={{ r: 6 }}
                                     isAnimationActive={false}
                                 />
