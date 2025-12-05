@@ -168,6 +168,20 @@ export function Dashboard() {
 
                                 <DropdownMenuSub>
                                     <DropdownMenuSubTrigger>
+                                        AFR ({preferences.afr})
+                                    </DropdownMenuSubTrigger>
+                                    <DropdownMenuSubContent>
+                                        {Object.values(UNITS.afr).map((u) => (
+                                            <DropdownMenuItem key={u.label} onClick={() => setUnit("afr", u.label)}>
+                                                {u.label}
+                                                {preferences.afr === u.label && <Check className="ml-auto h-4 w-4" />}
+                                            </DropdownMenuItem>
+                                        ))}
+                                    </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+
+                                <DropdownMenuSub>
+                                    <DropdownMenuSubTrigger>
                                         Torque ({preferences.torque})
                                     </DropdownMenuSubTrigger>
                                     <DropdownMenuSubContent>

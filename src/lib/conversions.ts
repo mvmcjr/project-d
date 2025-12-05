@@ -35,7 +35,7 @@ export function detectUnit(header: string): { name: string; unit: string; type: 
     if (["psig", "psi"].includes(unit)) type = "pressure";
     else if (["mph", "km/h"].includes(unit)) type = "speed";
     else if (["F", "C", "°F", "°C"].includes(unit)) type = "temperature";
-    else if (["AFR", "Lambda"].includes(unit)) type = "afr";
+    else if (["AFR", "Lambda", "λ"].includes(unit)) type = "afr";
     else if (["Nm", "kgfm"].includes(unit)) type = "torque";
 
     return { name, unit, type };
@@ -68,6 +68,14 @@ export function convertValue(value: number, type: UnitType, fromUnit: string, to
     if (type === "torque") {
         if (fromUnit === "Nm" && toUnit === "kgfm") return value * 0.1019716;
         if (fromUnit === "kgfm" && toUnit === "Nm") return value * 9.80665;
+    }
+
+    if (type === "afr") {
+        const isLambda = (u: string) => ["Lambda", "λ", "lambda"].includes(u);
+        const isAFR = (u: string) => ["AFR", "afr"].includes(u);
+
+        if (isLambda(fromUnit) && isAFR(toUnit)) return value * 14.7;
+        if (isAFR(fromUnit) && isLambda(toUnit)) return value / 14.7;
     }
 
     return value;
