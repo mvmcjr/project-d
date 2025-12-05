@@ -16,7 +16,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { RotateCcw, Search } from "lucide-react";
 import { ParsedData } from "@/lib/types";
 import { calculateStats } from "@/lib/stats";
 import {
@@ -87,6 +88,9 @@ export function ChartView({ data }: ChartViewProps) {
     const [refAreaLeft, setRefAreaLeft] = React.useState<number | null>(null);
     const [refAreaRight, setRefAreaRight] = React.useState<number | null>(null);
 
+    // Search State
+    const [searchQuery, setSearchQuery] = React.useState("");
+
     // Initial selection
     React.useEffect(() => {
         if (selectedSafeSeries.length === 0 && safeHeaders.length > 0) {
@@ -101,6 +105,14 @@ export function ChartView({ data }: ChartViewProps) {
                 : [...prev, safeKey]
         );
     };
+
+    // Filter Headers based on Search
+    const filteredHeaders = React.useMemo(() => {
+        if (!searchQuery) return safeHeaders;
+        return safeHeaders.filter(safeKey =>
+            headerMap[safeKey].toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [safeHeaders, headerMap, searchQuery]);
 
     // Filter Data based on Zoom
     const viewData = React.useMemo(() => {
@@ -249,11 +261,22 @@ export function ChartView({ data }: ChartViewProps) {
             {/* Sidebar Area */}
             <div className="w-full md:w-80 flex-shrink-0 flex flex-col h-[300px] md:h-full">
                 <Card className="h-full flex flex-col border-none md:border shadow-sm">
-                    <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b">
+                    <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
                         <div className="flex items-center justify-between">
                             <CardTitle className="text-sm font-medium">Metrics & Stats</CardTitle>
                             {(left !== null) && <span className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground">Zoomed</span>}
                         </div>
+
+                        <div className="relative">
+                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search metrics..."
+                                className="pl-8 h-9"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
+
                         <CardDescription className="text-xs">
                             {selectedSafeSeries.length} selected
                         </CardDescription>
@@ -261,52 +284,58 @@ export function ChartView({ data }: ChartViewProps) {
                     <CardContent className="flex-1 overflow-hidden p-0">
                         <ScrollArea className="h-full">
                             <div className="divide-y text-card-foreground">
-                                {safeHeaders.map((safeKey) => {
-                                    const isSelected = selectedSafeSeries.includes(safeKey);
-                                    const config = chartConfig[safeKey];
-                                    const color = config?.color;
-                                    const stat = stats[safeKey];
+                                {filteredHeaders.length === 0 ? (
+                                    <div className="p-4 text-center text-sm text-muted-foreground">
+                                        No metrics found.
+                                    </div>
+                                ) : (
+                                    filteredHeaders.map((safeKey) => {
+                                        const isSelected = selectedSafeSeries.includes(safeKey);
+                                        const config = chartConfig[safeKey];
+                                        const color = config?.color;
+                                        const stat = stats[safeKey];
 
-                                    return (
-                                        <div key={safeKey} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
-                                            <div className="flex items-start gap-3">
-                                                <Checkbox
-                                                    id={safeKey}
-                                                    checked={isSelected}
-                                                    onCheckedChange={() => toggleSeries(safeKey)}
-                                                    className="mt-1"
-                                                />
-                                                <div className="flex-1 space-y-1">
-                                                    <div className="flex items-center justify-between">
-                                                        <Label
-                                                            htmlFor={safeKey}
-                                                            className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "" : "text-muted-foreground"}`}
-                                                            style={{ color: isSelected ? color : undefined }}
-                                                        >
-                                                            {headerMap[safeKey]}
-                                                        </Label>
-                                                    </div>
+                                        return (
+                                            <div key={safeKey} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
+                                                <div className="flex items-start gap-3">
+                                                    <Checkbox
+                                                        id={safeKey}
+                                                        checked={isSelected}
+                                                        onCheckedChange={() => toggleSeries(safeKey)}
+                                                        className="mt-1"
+                                                    />
+                                                    <div className="flex-1 space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label
+                                                                htmlFor={safeKey}
+                                                                className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "" : "text-muted-foreground"}`}
+                                                                style={{ color: isSelected ? color : undefined }}
+                                                            >
+                                                                {headerMap[safeKey]}
+                                                            </Label>
+                                                        </div>
 
-                                                    {/* Stats Grid */}
-                                                    <div className="grid grid-cols-3 gap-1 pt-1 text-[10px] text-muted-foreground">
-                                                        <div className="flex flex-col">
-                                                            <span className="opacity-70">Min</span>
-                                                            <span className="font-mono text-foreground">{stat.min.toFixed(1)}</span>
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="opacity-70">Avg</span>
-                                                            <span className="font-mono text-foreground">{stat.avg.toFixed(1)}</span>
-                                                        </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="opacity-70">Max</span>
-                                                            <span className="font-mono text-foreground">{stat.max.toFixed(1)}</span>
+                                                        {/* Stats Grid */}
+                                                        <div className="grid grid-cols-3 gap-1 pt-1 text-[10px] text-muted-foreground">
+                                                            <div className="flex flex-col">
+                                                                <span className="opacity-70">Min</span>
+                                                                <span className="font-mono text-foreground">{stat.min.toFixed(1)}</span>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="opacity-70">Avg</span>
+                                                                <span className="font-mono text-foreground">{stat.avg.toFixed(1)}</span>
+                                                            </div>
+                                                            <div className="flex flex-col">
+                                                                <span className="opacity-70">Max</span>
+                                                                <span className="font-mono text-foreground">{stat.max.toFixed(1)}</span>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )
-                                })}
+                                        )
+                                    })
+                                )}
                             </div>
                         </ScrollArea>
                     </CardContent>
