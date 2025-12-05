@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { RotateCcw, Search } from "lucide-react";
 import { ParsedData } from "@/lib/types";
 import { calculateStats } from "@/lib/stats";
+import { generateColors } from "@/lib/utils";
 import {
     ChartConfig,
     ChartContainer,
@@ -33,16 +34,7 @@ interface ChartViewProps {
     data: ParsedData;
 }
 
-const COLORS = [
-    "#2563eb", // blue-600
-    "#dc2626", // red-600
-    "#16a34a", // green-600
-    "#d97706", // amber-600
-    "#9333ea", // purple-600
-    "#db2777", // pink-600
-    "#0891b2", // cyan-600
-    "#4f46e5", // indigo-600
-];
+
 
 // Helper to sanitize keys for CSS variables
 const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, "_");
@@ -132,11 +124,14 @@ export function ChartView({ data }: ChartViewProps) {
         const statsObj: Record<string, { min: number; max: number; avg: number; minPoint: any; maxPoint: any }> = {};
         const config: ChartConfig = {};
 
+        // Generate colors dynamically
+        const dynamicColors = generateColors(safeHeaders.length);
+
         safeHeaders.forEach((safeKey, i) => {
             statsObj[safeKey] = calculateStats(viewData, safeKey);
             config[safeKey] = {
                 label: headerMap[safeKey],
-                color: COLORS[i % COLORS.length],
+                color: dynamicColors[i],
             };
         });
 
