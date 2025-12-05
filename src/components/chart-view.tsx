@@ -112,12 +112,32 @@ export function ChartView({ data }: ChartViewProps) {
     // Search State
     const [searchQuery, setSearchQuery] = React.useState("");
 
-    // Initial selection
+    // Track previous headers to detect new additions (like Virtual Dyno Power)
+    const prevSafeHeadersRef = React.useRef<string[]>([]);
+
+    // Auto-select logic
     React.useEffect(() => {
-        if (selectedSafeSeries.length === 0 && safeHeaders.length > 0) {
-            setSelectedSafeSeries(safeHeaders.slice(0, 3));
+        const prev = prevSafeHeadersRef.current;
+        const current = safeHeaders;
+
+        // Check if this is an "Append" operation (superset of previous headers)
+        // This detects when a new channel is added to existing data (e.g. Power)
+        const isAppend = prev.length > 0 && prev.every(p => current.includes(p));
+
+        if (isAppend && current.length > prev.length) {
+            // Find newly added keys and select them
+            const newKeys = current.filter(k => !prev.includes(k));
+            if (newKeys.length > 0) {
+                setSelectedSafeSeries(curr => [...curr, ...newKeys]);
+            }
         }
-    }, [safeHeaders]);
+        // Initial load or fresh file: select default first 3 if selection is empty
+        else if (selectedSafeSeries.length === 0 && current.length > 0) {
+            setSelectedSafeSeries(current.slice(0, 3));
+        }
+
+        prevSafeHeadersRef.current = current;
+    }, [safeHeaders, selectedSafeSeries.length]);
 
     const toggleSeries = (safeKey: string) => {
         setSelectedSafeSeries(prev =>

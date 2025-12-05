@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCcw, Settings, Check, Moon, Sun } from "lucide-react";
 import { ChartView } from "@/components/chart-view";
 import { useTheme } from "next-themes";
+import { VirtualDynoDialog } from "@/components/virtual-dyno-dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -29,6 +30,7 @@ const DEFAULT_PREFERENCES: UnitPreferences = {
     afr: "AFR",
     torque: "Nm",
     unknown: "",
+    power: "hp",
 };
 
 export function Dashboard() {
@@ -42,6 +44,46 @@ export function Dashboard() {
 
     const setUnit = (type: UnitType, unit: string) => {
         setPreferences((prev) => ({ ...prev, [type]: unit }));
+    };
+
+    const handleCalculatePower = (rpmHeader: string, torqueHeader: string, targetUnit: string) => {
+        if (!data) return;
+
+        const newData = data.data.map(row => {
+            const rpm = row[rpmHeader];
+            const torque = row[torqueHeader];
+
+            if (typeof rpm === 'number' && typeof torque === 'number') {
+                // 1. Detect source units
+                const rpmUnitInfo = detectUnit(rpmHeader);
+                const torqueUnitInfo = detectUnit(torqueHeader);
+
+                // 2. Normalize to Base Units (RPM is already base, Torque needs to be Nm)
+                let torqueNm = torque;
+                if (torqueUnitInfo && torqueUnitInfo.type === 'torque') {
+                    // Convert to base (Nm)
+                    // Note: convertValue converts FROM current TO target.
+                    // We want FROM current TO 'Nm'.
+                    torqueNm = convertValue(torque, 'torque', torqueUnitInfo.unit, 'Nm');
+                }
+
+                // 3. Calculate Power in kW (Base Unit)
+                // Power (kW) = Torque (Nm) * RPM / 9549
+                const powerKw = (torqueNm * rpm) / 9549;
+
+                // 4. Convert kW to Target Unit
+                const finalPower = convertValue(powerKw, 'power', 'kW', targetUnit);
+
+                return { ...row, [`Power [${targetUnit}]`]: finalPower };
+            }
+            return row;
+        });
+
+        setData({
+            ...data,
+            headers: [...data.headers, `Power [${targetUnit}]`],
+            data: newData
+        });
     };
 
     // Process data with conversions
@@ -113,6 +155,10 @@ export function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        <VirtualDynoDialog
+                            channels={data.headers}
+                            onCalculate={handleCalculatePower}
+                        />
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                                 <Button variant="outline" size="sm">
