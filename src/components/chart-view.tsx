@@ -40,22 +40,15 @@ interface CustomDotProps {
     cy: number;
     stroke: string;
     payload: { Time: number };
-    dataKey: string;
-    stats: Record<string, { minPoint: Record<string, number | string | null> | null; maxPoint: Record<string, number | string | null> | null }>;
+    minMaxTimes: Set<number>;
 }
 
-// Custom Dot Component for Min/Max
+// OPTIMIZATION: Optimized CustomDot - uses pre-calculated Set for O(1) lookup
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CustomDot = (props: any) => {
-    // Casting to exact type related to Recharts internals is tricky, using safe interface
-    const { cx, cy, stroke, payload, dataKey, stats } = props as CustomDotProps;
-    const s = stats[dataKey];
-    if (!s || !s.minPoint || !s.maxPoint) return null;
+    const { cx, cy, stroke, payload, minMaxTimes } = props as CustomDotProps;
 
-    const isMin = payload.Time === s.minPoint.Time;
-    const isMax = payload.Time === s.maxPoint.Time;
-
-    if (isMin || isMax) {
+    if (minMaxTimes && minMaxTimes.has(payload.Time)) {
         return (
             <circle cx={cx} cy={cy} r={4} fill={stroke} stroke="white" strokeWidth={2} />
         );
@@ -150,13 +143,14 @@ export function ChartView({ data }: ChartViewProps) {
         prevSafeHeadersRef.current = current;
     }, [safeHeaders, selectedSafeSeries.length]);
 
-    const toggleSeries = (safeKey: string) => {
+    // OPTIMIZATION: Memoized toggle function
+    const toggleSeries = React.useCallback((safeKey: string) => {
         setSelectedSafeSeries(prev =>
             prev.includes(safeKey)
                 ? prev.filter(s => s !== safeKey)
                 : [...prev, safeKey]
         );
-    };
+    }, []);
 
     // Filter Headers based on Search
     const filteredHeaders = React.useMemo(() => {
@@ -185,26 +179,51 @@ export function ChartView({ data }: ChartViewProps) {
 
     const [isRelative, setIsRelative] = React.useState(true);
 
-    // Calculate Stats & Config (applied to viewData so stats update on zoom)
-    const { stats, chartConfig } = React.useMemo(() => {
+    // OPTIMIZATION: Stabilize color generation - only depends on safeHeaders, not viewData
+    const stableColors = React.useMemo(() => {
+        return generateColors(safeHeaders.length);
+    }, [safeHeaders.length]);
+
+    // OPTIMIZATION: Calculate Stats ONLY for selected series (major performance improvement)
+    const stats = React.useMemo(() => {
         const statsObj: Record<string, { min: number; max: number; avg: number; minPoint: Record<string, number | string | null> | null; maxPoint: Record<string, number | string | null> | null }> = {};
-        const config: ChartConfig = {};
 
-        // Generate colors dynamically
-        const dynamicColors = generateColors(safeHeaders.length);
-
-        safeHeaders.forEach((safeKey, i) => {
+        // Calculate stats ONLY for selected series
+        selectedSafeSeries.forEach((safeKey) => {
             statsObj[safeKey] = calculateStats(viewData, safeKey);
-            config[safeKey] = {
-                label: headerMap[safeKey],
-                color: dynamicColors[i],
-            };
         });
 
-        return { stats: statsObj, chartConfig: config };
-    }, [viewData, safeHeaders, headerMap]);
+        return statsObj;
+    }, [viewData, selectedSafeSeries]);
 
-    // Normalize Data for Relative Mode
+    // OPTIMIZATION: Pre-calculate min/max times for efficient CustomDot rendering
+    const minMaxTimes = React.useMemo(() => {
+        const times = new Set<number>();
+        selectedSafeSeries.forEach((safeKey) => {
+            const stat = stats[safeKey];
+            if (stat?.minPoint?.Time && typeof stat.minPoint.Time === 'number') {
+                times.add(stat.minPoint.Time);
+            }
+            if (stat?.maxPoint?.Time && typeof stat.maxPoint.Time === 'number') {
+                times.add(stat.maxPoint.Time);
+            }
+        });
+        return times;
+    }, [stats, selectedSafeSeries]);
+
+    // Chart config for all headers (needed for sidebar display)
+    const chartConfig = React.useMemo(() => {
+        const config: ChartConfig = {};
+        safeHeaders.forEach((safeKey, i) => {
+            config[safeKey] = {
+                label: headerMap[safeKey],
+                color: stableColors[i],
+            };
+        });
+        return config;
+    }, [safeHeaders, headerMap, stableColors]);
+
+    // OPTIMIZATION: Normalize Data for Relative Mode - only transform selected series
     const displayData = React.useMemo(() => {
         if (!isRelative) return chartData;
 
@@ -226,8 +245,8 @@ export function ChartView({ data }: ChartViewProps) {
         });
     }, [chartData, isRelative, stats, selectedSafeSeries]);
 
-    // Zoom Handlers
-    const zoom = () => {
+    // OPTIMIZATION: Memoized zoom handlers
+    const zoom = React.useCallback(() => {
         if (refAreaLeft === refAreaRight || refAreaLeft === null || refAreaRight === null) {
             setRefAreaLeft(null);
             setRefAreaRight(null);
@@ -243,14 +262,25 @@ export function ChartView({ data }: ChartViewProps) {
         setRight(newRight);
         setRefAreaLeft(null);
         setRefAreaRight(null);
-    };
+    }, [refAreaLeft, refAreaRight]);
 
-    const zoomOut = () => {
+    const zoomOut = React.useCallback(() => {
         setLeft(null);
         setRight(null);
         setRefAreaLeft(null);
         setRefAreaRight(null);
-    };
+    }, []);
+
+    // OPTIMIZATION: Memoized mouse event handlers for LineChart
+    const handleMouseDown = React.useCallback((e: unknown) => {
+        if (e) setRefAreaLeft((e as { activeLabel: number }).activeLabel);
+    }, []);
+
+    const handleMouseMove = React.useCallback((e: unknown) => {
+        if (refAreaLeft !== null && e) {
+            setRefAreaRight((e as { activeLabel: number }).activeLabel);
+        }
+    }, [refAreaLeft]);
 
 
 
@@ -271,8 +301,8 @@ export function ChartView({ data }: ChartViewProps) {
                         <LineChart
                             data={displayData}
                             margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
-                            onMouseDown={(e: unknown) => e && setRefAreaLeft((e as { activeLabel: number }).activeLabel)}
-                            onMouseMove={(e: unknown) => refAreaLeft !== null && e && setRefAreaRight((e as { activeLabel: number }).activeLabel)}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
                             onMouseUp={zoom}
                         >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -337,7 +367,7 @@ export function ChartView({ data }: ChartViewProps) {
                                     dataKey={s}
                                     stroke={`var(--color-${s})`}
                                     strokeWidth={2}
-                                    dot={<CustomDot stats={stats} />}
+                                    dot={<CustomDot minMaxTimes={minMaxTimes} />}
                                     activeDot={{ r: 6 }}
                                     isAnimationActive={false}
                                 />
@@ -350,75 +380,122 @@ export function ChartView({ data }: ChartViewProps) {
                 </CardContent>
             </Card>
 
-            {/* Sidebar Area */}
-            <div className="w-full md:w-80 flex-shrink-0 flex flex-col h-[300px] md:h-full">
-                <Card className="h-full flex flex-col border-none md:border shadow-sm">
-                    <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
-                        <div className="flex items-center justify-between">
-                            <CardTitle className="text-sm font-medium">Data Channels</CardTitle>
-                            <div className="flex items-center space-x-2">
-                                <Label htmlFor="relative-mode" className="text-xs text-muted-foreground whitespace-nowrap">
-                                    Relative %
-                                </Label>
-                                <Switch
-                                    id="relative-mode"
-                                    checked={isRelative}
-                                    onCheckedChange={setIsRelative}
-                                    className="scale-75"
-                                />
-                            </div>
-                        </div>
-                        {(left !== null) && <div className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground self-start">Zoomed</div>}
+            {/* OPTIMIZATION: Extracted sidebar component to prevent re-renders when searching */}
+            <ChartSidebar
+                filteredHeaders={filteredHeaders}
+                selectedSafeSeries={selectedSafeSeries}
+                chartConfig={chartConfig}
+                headerMap={headerMap}
+                stats={stats}
+                isRelative={isRelative}
+                setIsRelative={setIsRelative}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                toggleSeries={toggleSeries}
+                left={left}
+            />
+        </div>
+    );
+}
 
-                        <div className="relative">
-                            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search channels..."
-                                className="pl-8 h-9"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+// OPTIMIZATION: Extracted sidebar component to prevent re-renders when searching
+interface ChartSidebarProps {
+    filteredHeaders: string[];
+    selectedSafeSeries: string[];
+    chartConfig: ChartConfig;
+    headerMap: Record<string, string>;
+    stats: Record<string, { min: number; max: number; avg: number; minPoint: Record<string, number | string | null> | null; maxPoint: Record<string, number | string | null> | null }>;
+    isRelative: boolean;
+    setIsRelative: (value: boolean) => void;
+    searchQuery: string;
+    setSearchQuery: (value: string) => void;
+    toggleSeries: (safeKey: string) => void;
+    left: number | null;
+}
+
+const ChartSidebar = React.memo(function ChartSidebar({
+    filteredHeaders,
+    selectedSafeSeries,
+    chartConfig,
+    headerMap,
+    stats,
+    isRelative,
+    setIsRelative,
+    searchQuery,
+    setSearchQuery,
+    toggleSeries,
+    left,
+}: ChartSidebarProps) {
+    return (
+        <div className="w-full md:w-80 flex-shrink-0 flex flex-col h-[300px] md:h-full">
+            <Card className="h-full flex flex-col border-none md:border shadow-sm">
+                <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
+                    <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm font-medium">Data Channels</CardTitle>
+                        <div className="flex items-center space-x-2">
+                            <Label htmlFor="relative-mode" className="text-xs text-muted-foreground whitespace-nowrap">
+                                Relative %
+                            </Label>
+                            <Switch
+                                id="relative-mode"
+                                checked={isRelative}
+                                onCheckedChange={setIsRelative}
+                                className="scale-75"
                             />
                         </div>
+                    </div>
+                    {(left !== null) && <div className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground self-start">Zoomed</div>}
 
-                        <CardDescription className="text-xs">
-                            {selectedSafeSeries.length} selected
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex-1 overflow-hidden p-0">
-                        <ScrollArea className="h-full">
-                            <div className="divide-y text-card-foreground">
-                                {filteredHeaders.length === 0 ? (
-                                    <div className="p-4 text-center text-sm text-muted-foreground">
-                                        No channels found.
-                                    </div>
-                                ) : (
-                                    filteredHeaders.map((safeKey) => {
-                                        const isSelected = selectedSafeSeries.includes(safeKey);
-                                        const config = chartConfig[safeKey];
-                                        const color = config?.color;
-                                        const stat = stats[safeKey];
+                    <div className="relative">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search channels..."
+                            className="pl-8 h-9"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                    </div>
 
-                                        return (
-                                            <div key={safeKey} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
-                                                <div className="flex items-start gap-3">
-                                                    <Checkbox
-                                                        id={safeKey}
-                                                        checked={isSelected}
-                                                        onCheckedChange={() => toggleSeries(safeKey)}
-                                                        className="mt-1"
-                                                    />
-                                                    <div className="flex-1 space-y-1">
-                                                        <div className="flex items-center justify-between">
-                                                            <Label
-                                                                htmlFor={safeKey}
-                                                                className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "" : "text-muted-foreground"}`}
-                                                                style={{ color: isSelected ? color : undefined }}
-                                                            >
-                                                                {headerMap[safeKey]}
-                                                            </Label>
-                                                        </div>
+                    <CardDescription className="text-xs">
+                        {selectedSafeSeries.length} selected
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-hidden p-0">
+                    <ScrollArea className="h-full">
+                        <div className="divide-y text-card-foreground">
+                            {filteredHeaders.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                    No channels found.
+                                </div>
+                            ) : (
+                                filteredHeaders.map((safeKey) => {
+                                    const isSelected = selectedSafeSeries.includes(safeKey);
+                                    const config = chartConfig[safeKey];
+                                    const color = config?.color;
+                                    const stat = stats[safeKey];
 
-                                                        {/* Stats Grid */}
+                                    return (
+                                        <div key={safeKey} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
+                                            <div className="flex items-start gap-3">
+                                                <Checkbox
+                                                    id={safeKey}
+                                                    checked={isSelected}
+                                                    onCheckedChange={() => toggleSeries(safeKey)}
+                                                    className="mt-1"
+                                                />
+                                                <div className="flex-1 space-y-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label
+                                                            htmlFor={safeKey}
+                                                            className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "" : "text-muted-foreground"}`}
+                                                            style={{ color: isSelected ? color : undefined }}
+                                                        >
+                                                            {headerMap[safeKey]}
+                                                        </Label>
+                                                    </div>
+
+                                                    {/* Stats Grid - Only show if stats are available for this series */}
+                                                    {stat && (
                                                         <div className="grid grid-cols-3 gap-1 pt-1 text-[10px] text-muted-foreground">
                                                             <div className="flex flex-col">
                                                                 <span className="opacity-70">Min</span>
@@ -433,17 +510,17 @@ export function ChartView({ data }: ChartViewProps) {
                                                                 <span className="font-mono text-foreground">{stat.max.toFixed(1)}</span>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </div>
                                             </div>
-                                        )
-                                    })
-                                )}
-                            </div>
-                        </ScrollArea>
-                    </CardContent>
-                </Card>
-            </div>
+                                        </div>
+                                    )
+                                })
+                            )}
+                        </div>
+                    </ScrollArea>
+                </CardContent>
+            </Card>
         </div>
     );
-}
+});
