@@ -31,6 +31,7 @@ const DEFAULT_PREFERENCES: UnitPreferences = {
     torque: "Nm",
     unknown: "",
     power: "hp",
+    rpm: "rpm",
 };
 
 export function Dashboard() {
@@ -127,7 +128,7 @@ export function Dashboard() {
         };
     }, [data, preferences]);
 
-    if (!processedData) {
+    if (!processedData || !data) {
         return (
             <div className="container mx-auto max-w-2xl py-20 px-4">
                 <div className="text-center mb-10">
