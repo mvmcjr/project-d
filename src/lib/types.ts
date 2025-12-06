@@ -4,5 +4,5 @@ export interface ParsedData {
     fileName: string;
     headers: string[];
     data: DataPoint[];
-    meta: any;
+    meta: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }

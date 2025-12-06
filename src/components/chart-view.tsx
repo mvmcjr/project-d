@@ -35,9 +35,20 @@ interface ChartViewProps {
 
 
 
+interface CustomDotProps {
+    cx: number;
+    cy: number;
+    stroke: string;
+    payload: { Time: number };
+    dataKey: string;
+    stats: Record<string, { minPoint: Record<string, number | string | null> | null; maxPoint: Record<string, number | string | null> | null }>;
+}
+
 // Custom Dot Component for Min/Max
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CustomDot = (props: any) => {
-    const { cx, cy, stroke, payload, dataKey, stats } = props;
+    // Casting to exact type related to Recharts internals is tricky, using safe interface
+    const { cx, cy, stroke, payload, dataKey, stats } = props as CustomDotProps;
     const s = stats[dataKey];
     if (!s || !s.minPoint || !s.maxPoint) return null;
 
@@ -69,7 +80,7 @@ export function ChartView({ data }: ChartViewProps) {
 
             // Generate stable key by stripping units (e.g. "Boost [psi]" -> "Boost")
             // This ensures selection persists when units change
-            let base = h.replace(/\s*\[[^\]]*\]$/, '');
+            const base = h.replace(/\s*\[[^\]]*\]$/, '');
             let safe = sanitizeKey(base);
 
             // Handle duplicates (e.g. distinct sensors with same name but different units, or colliding names)
@@ -88,7 +99,7 @@ export function ChartView({ data }: ChartViewProps) {
         });
 
         const newData = data.data.map(row => {
-            const newRow: Record<string, any> = { Time: row.Time };
+            const newRow: Record<string, number | string | null> = { Time: row.Time };
             Object.keys(row).forEach(k => {
                 const sKey = safeMap[k];
                 if (k !== "Time" && sKey) {
@@ -158,7 +169,11 @@ export function ChartView({ data }: ChartViewProps) {
     // Filter Data based on Zoom
     const viewData = React.useMemo(() => {
         if (left === null || right === null) return processedData;
-        return processedData.filter(d => d.Time >= left && d.Time <= right);
+        return processedData.filter(d => {
+            const t = d.Time;
+            if (typeof t !== 'number') return false;
+            return t >= left && t <= right;
+        });
     }, [processedData, left, right]);
 
     // Downsampling for performance (applied to viewData)
@@ -172,7 +187,7 @@ export function ChartView({ data }: ChartViewProps) {
 
     // Calculate Stats & Config (applied to viewData so stats update on zoom)
     const { stats, chartConfig } = React.useMemo(() => {
-        const statsObj: Record<string, { min: number; max: number; avg: number; minPoint: any; maxPoint: any }> = {};
+        const statsObj: Record<string, { min: number; max: number; avg: number; minPoint: Record<string, number | string | null> | null; maxPoint: Record<string, number | string | null> | null }> = {};
         const config: ChartConfig = {};
 
         // Generate colors dynamically
@@ -194,7 +209,7 @@ export function ChartView({ data }: ChartViewProps) {
         if (!isRelative) return chartData;
 
         return chartData.map(row => {
-            const newRow: any = { Time: row.Time };
+            const newRow: Record<string, number | string | null> = { Time: row.Time };
             selectedSafeSeries.forEach(key => {
                 const s = stats[key];
                 const val = row[key];
@@ -256,8 +271,8 @@ export function ChartView({ data }: ChartViewProps) {
                         <LineChart
                             data={displayData}
                             margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
-                            onMouseDown={(e: any) => e && setRefAreaLeft(e.activeLabel)}
-                            onMouseMove={(e: any) => refAreaLeft !== null && e && setRefAreaRight(e.activeLabel)}
+                            onMouseDown={(e: unknown) => e && setRefAreaLeft((e as { activeLabel: number }).activeLabel)}
+                            onMouseMove={(e: unknown) => refAreaLeft !== null && e && setRefAreaRight((e as { activeLabel: number }).activeLabel)}
                             onMouseUp={zoom}
                         >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -289,17 +304,23 @@ export function ChartView({ data }: ChartViewProps) {
                                             }
                                             return "";
                                         }}
-                                        formatter={(value, name, item, index, payload) => {
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        formatter={(value, name, item, index, payload: any) => {
                                             const key = item.dataKey as string;
 
-                                            let displayValue = value;
+                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                            let displayValue: any = value;
 
                                             if (isRelative && payload) {
-                                                const originalVal = (payload as any)[`original_${key}`];
-                                                if (originalVal !== undefined) {
+                                                const p = payload;
+                                                const originalVal = p[`original_${key}`];
+                                                if (typeof originalVal === 'number') {
                                                     displayValue = originalVal;
                                                 }
                                             }
+
+                                            // Ensure displayValue is treated as a valid React child (string/number)
+                                            if (displayValue === null) return "";
 
                                             return typeof displayValue === 'number'
                                                 ? displayValue.toLocaleString(undefined, { maximumFractionDigits: 2 })

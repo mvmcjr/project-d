@@ -11,7 +11,7 @@ interface StatsSidebarProps {
 }
 
 // Helper to calculate stats
-function calculateStats(data: any[], key: string) {
+function calculateStats(data: Record<string, number | string | null>[], key: string) {
     let min = Infinity;
     let max = -Infinity;
     let sum = 0;

@@ -59,12 +59,12 @@ export function convertValue(value: number, type: UnitType, fromUnit: string, to
 
     // Generic conversion using base units if available
     // (This simplifies the manual if/else blocks below)
-    const unitGroup = UNITS[type as keyof typeof UNITS] as any;
+    const unitGroup = UNITS[type as keyof typeof UNITS] as Record<string, { label: string; toBase: (v: number) => number; fromBase: (v: number) => number }>;
     if (unitGroup) {
-        const fromDef = Object.values(unitGroup).find((u: any) => u.label === fromUnit) as any;
-        const toDef = Object.values(unitGroup).find((u: any) => u.label === toUnit) as any;
+        const fromDef = Object.values(unitGroup).find((u) => u.label === fromUnit);
+        const toDef = Object.values(unitGroup).find((u) => u.label === toUnit);
 
-        if (fromDef && toDef && fromDef.toBase && toDef.fromBase) {
+        if (fromDef && toDef) {
             const baseVal = fromDef.toBase(value);
             return toDef.fromBase(baseVal);
         }

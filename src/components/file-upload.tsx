@@ -47,7 +47,7 @@ export function FileUpload({ onDataParsed }: FileUploadProps) {
                 }
 
                 const headers = results.meta.fields || [];
-                const data = results.data as Record<string, any>[];
+                const data = results.data as Record<string, number | string | null>[];
 
                 if (headers.length === 0 || data.length === 0) {
                     setError("CSV file appears to be empty.");
@@ -134,7 +134,7 @@ export function FileUpload({ onDataParsed }: FileUploadProps) {
                     }
 
                     const headers = results.meta.fields || [];
-                    const data = results.data as Record<string, any>[];
+                    const data = results.data as Record<string, number | string | null>[];
 
                     if (headers.length === 0 || data.length === 0) {
                         setError("CSV file from URL appears to be empty.");

@@ -70,7 +70,7 @@ export function Dashboard() {
                             }
 
                             const headers = results.meta.fields || [];
-                            const data = results.data as Record<string, any>[];
+                            const data = results.data as Record<string, number | string | null>[];
 
                             if (headers.length === 0 || data.length === 0) {
                                 toast.error("CSV file from URL appears to be empty.", { id: toastId });
@@ -80,7 +80,7 @@ export function Dashboard() {
                             setData({
                                 fileName: "Bootmod3 Log",
                                 headers,
-                                data,
+                                data: data,
                                 meta: results.meta,
                             });
                             toast.success("Log imported successfully", { id: toastId });
@@ -115,7 +115,6 @@ export function Dashboard() {
 
             if (typeof rpm === 'number' && typeof torque === 'number') {
                 // 1. Detect source units
-                const rpmUnitInfo = detectUnit(rpmHeader);
                 const torqueUnitInfo = detectUnit(torqueHeader);
 
                 // 2. Normalize to Base Units (RPM is already base, Torque needs to be Nm)
@@ -162,7 +161,7 @@ export function Dashboard() {
         });
 
         const newData = data.data.map(row => {
-            const newRow: Record<string, any> = {};
+            const newRow: Record<string, number | string | null> = {};
             data.headers.forEach((header, index) => {
                 const value = row[header];
                 const newHeader = newHeaders[index];
