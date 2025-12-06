@@ -135,8 +135,8 @@ export function ChartView({ data }: ChartViewProps) {
                 setSelectedSafeSeries(curr => [...curr, ...newKeys]);
             }
         }
-        // Initial load or fresh file: select default first 3 if selection is empty
-        else if (selectedSafeSeries.length === 0 && current.length > 0) {
+        // Initial load or fresh file: select default first 3 if selection is empty and purely initialization
+        else if (selectedSafeSeries.length === 0 && current.length > 0 && prev.length === 0) {
             setSelectedSafeSeries(current.slice(0, 3));
         }
 
@@ -150,6 +150,10 @@ export function ChartView({ data }: ChartViewProps) {
                 ? prev.filter(s => s !== safeKey)
                 : [...prev, safeKey]
         );
+    }, []);
+
+    const deselectAll = React.useCallback(() => {
+        setSelectedSafeSeries([]);
     }, []);
 
     // Filter Headers based on Search
@@ -392,6 +396,7 @@ export function ChartView({ data }: ChartViewProps) {
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
                 toggleSeries={toggleSeries}
+                deselectAll={deselectAll}
                 left={left}
             />
         </div>
@@ -410,6 +415,7 @@ interface ChartSidebarProps {
     searchQuery: string;
     setSearchQuery: (value: string) => void;
     toggleSeries: (safeKey: string) => void;
+    deselectAll: () => void;
     left: number | null;
 }
 
@@ -424,6 +430,7 @@ const ChartSidebar = React.memo(function ChartSidebar({
     searchQuery,
     setSearchQuery,
     toggleSeries,
+    deselectAll,
     left,
 }: ChartSidebarProps) {
     return (
@@ -446,6 +453,8 @@ const ChartSidebar = React.memo(function ChartSidebar({
                     </div>
                     {(left !== null) && <div className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground self-start">Zoomed</div>}
 
+
+
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
@@ -456,9 +465,17 @@ const ChartSidebar = React.memo(function ChartSidebar({
                         />
                     </div>
 
-                    <CardDescription className="text-xs">
-                        {selectedSafeSeries.length} selected
-                    </CardDescription>
+                    <div className="flex items-center justify-between">
+                        <CardDescription className="text-xs">
+                            {selectedSafeSeries.length} selected
+                        </CardDescription>
+                        {selectedSafeSeries.length > 0 && (
+                            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive" onClick={deselectAll}>
+                                Deselect All
+                            </Button>
+                        )}
+                    </div>
+
                 </CardHeader>
                 <CardContent className="flex-1 overflow-hidden p-0">
                     <ScrollArea className="h-full">
