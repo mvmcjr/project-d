@@ -12,7 +12,6 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -21,6 +20,7 @@ import { RotateCcw, Search } from "lucide-react";
 import { ParsedData } from "@/lib/types";
 import { calculateStats } from "@/lib/stats";
 import { generateColors } from "@/lib/utils";
+import { detectUnit } from "@/lib/conversions";
 import {
     ChartConfig,
     ChartContainer,
@@ -181,7 +181,26 @@ export function ChartView({ data }: ChartViewProps) {
         return viewData.filter((_, i) => i % factor === 0);
     }, [viewData]);
 
-    const [isRelative, setIsRelative] = React.useState(true);
+    // Axis Management: Determine active units and assign axes
+    const { activeUnits, uniqueUnits } = React.useMemo(() => {
+        const active: Record<string, string> = {}; // safeKey -> unit
+        const unique = new Set<string>();
+
+        selectedSafeSeries.forEach(safeKey => {
+            const originalHeader = headerMap[safeKey];
+            const detected = detectUnit(originalHeader);
+            // specific fallback for "value" or unknown
+            const unit = detected?.unit || "val";
+
+            active[safeKey] = unit;
+            unique.add(unit);
+        });
+
+        return {
+            activeUnits: active,
+            uniqueUnits: Array.from(unique).sort() // stable order
+        };
+    }, [selectedSafeSeries, headerMap]);
 
     // OPTIMIZATION: Stabilize color generation - only depends on safeHeaders, not viewData
     const stableColors = React.useMemo(() => {
@@ -227,27 +246,7 @@ export function ChartView({ data }: ChartViewProps) {
         return config;
     }, [safeHeaders, headerMap, stableColors]);
 
-    // OPTIMIZATION: Normalize Data for Relative Mode - only transform selected series
-    const displayData = React.useMemo(() => {
-        if (!isRelative) return chartData;
-
-        return chartData.map(row => {
-            const newRow: Record<string, number | string | null> = { Time: row.Time };
-            selectedSafeSeries.forEach(key => {
-                const s = stats[key];
-                const val = row[key];
-                if (typeof val === 'number' && s && (s.max - s.min) !== 0) {
-                    newRow[key] = ((val - s.min) / (s.max - s.min)) * 100;
-                    // Store original for tooltip
-                    newRow[`original_${key}`] = val;
-                } else if (typeof val === 'number') {
-                    newRow[key] = val; // Fallback if range is 0
-                    newRow[`original_${key}`] = val;
-                }
-            });
-            return newRow;
-        });
-    }, [chartData, isRelative, stats, selectedSafeSeries]);
+    // No need for normalization anymore - simply use chartData
 
     // OPTIMIZATION: Memoized zoom handlers
     const zoom = React.useCallback(() => {
@@ -303,7 +302,7 @@ export function ChartView({ data }: ChartViewProps) {
                     </div>
                     <ChartContainer config={chartConfig} className="aspect-auto h-full w-full select-none">
                         <LineChart
-                            data={displayData}
+                            data={chartData}
                             margin={{ top: 10, right: 30, left: 0, bottom: 20 }}
                             onMouseDown={handleMouseDown}
                             onMouseMove={handleMouseMove}
@@ -320,13 +319,28 @@ export function ChartView({ data }: ChartViewProps) {
                                 domain={[left || 'dataMin', right || 'dataMax']}
                                 type="number"
                             />
-                            <YAxis
-                                tickLine={false}
-                                axisLine={false}
-                                width={40}
-                                tickFormatter={(val) => isRelative ? `${val.toFixed(0)}%` : val}
-                                domain={isRelative ? [0, 100] : ['auto', 'auto']}
-                            />
+
+                            {/* Dynamically render Y-Axes based on active units */}
+                            {uniqueUnits.map((unit, index) => (
+                                <YAxis
+                                    key={unit}
+                                    yAxisId={unit}
+                                    orientation={index % 2 === 0 ? "left" : "right"}
+                                    tickLine={false}
+                                    axisLine={true}
+                                    width={40}
+                                    tickFormatter={(val) => typeof val === 'number' ?
+                                        val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val.toFixed(0) : val}
+                                    domain={['auto', 'auto']}
+                                    label={{
+                                        value: unit,
+                                        angle: -90,
+                                        position: index % 2 === 0 ? 'insideLeft' : 'insideRight',
+                                        style: { textAnchor: 'middle', fill: 'var(--muted-foreground)', fontSize: 10 }
+                                    }}
+                                />
+                            ))}
+
                             <ChartTooltip
                                 content={
                                     <ChartTooltipContent
@@ -338,27 +352,11 @@ export function ChartView({ data }: ChartViewProps) {
                                             }
                                             return "";
                                         }}
-                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                        formatter={(value, name, item, index, payload: any) => {
-                                            const key = item.dataKey as string;
-
-                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                            let displayValue: any = value;
-
-                                            if (isRelative && payload) {
-                                                const p = payload;
-                                                const originalVal = p[`original_${key}`];
-                                                if (typeof originalVal === 'number') {
-                                                    displayValue = originalVal;
-                                                }
-                                            }
-
-                                            // Ensure displayValue is treated as a valid React child (string/number)
-                                            if (displayValue === null) return "";
-
-                                            return typeof displayValue === 'number'
-                                                ? displayValue.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                                                : displayValue;
+                                        formatter={(value, name) => {
+                                            if (value === null) return "";
+                                            return typeof value === 'number'
+                                                ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                                                : value;
                                         }}
                                     />
                                 }
@@ -367,6 +365,7 @@ export function ChartView({ data }: ChartViewProps) {
                             {selectedSafeSeries.map((s) => (
                                 <Line
                                     key={s}
+                                    yAxisId={activeUnits[s]}
                                     type="monotone"
                                     dataKey={s}
                                     stroke={`var(--color-${s})`}
@@ -377,7 +376,7 @@ export function ChartView({ data }: ChartViewProps) {
                                 />
                             ))}
                             {refAreaLeft !== null && refAreaRight !== null && (
-                                <ReferenceArea x1={refAreaLeft} x2={refAreaRight} strokeOpacity={0.3} fill="hsl(var(--foreground))" fillOpacity={0.1} />
+                                <ReferenceArea yAxisId={uniqueUnits[0]} x1={refAreaLeft} x2={refAreaRight} strokeOpacity={0.3} fill="hsl(var(--foreground))" fillOpacity={0.1} />
                             )}
                         </LineChart>
                     </ChartContainer>
@@ -391,8 +390,6 @@ export function ChartView({ data }: ChartViewProps) {
                 chartConfig={chartConfig}
                 headerMap={headerMap}
                 stats={stats}
-                isRelative={isRelative}
-                setIsRelative={setIsRelative}
                 searchQuery={searchQuery}
                 setSearchQuery={setSearchQuery}
                 toggleSeries={toggleSeries}
@@ -410,8 +407,6 @@ interface ChartSidebarProps {
     chartConfig: ChartConfig;
     headerMap: Record<string, string>;
     stats: Record<string, { min: number; max: number; avg: number; minPoint: Record<string, number | string | null> | null; maxPoint: Record<string, number | string | null> | null }>;
-    isRelative: boolean;
-    setIsRelative: (value: boolean) => void;
     searchQuery: string;
     setSearchQuery: (value: string) => void;
     toggleSeries: (safeKey: string) => void;
@@ -425,8 +420,6 @@ const ChartSidebar = React.memo(function ChartSidebar({
     chartConfig,
     headerMap,
     stats,
-    isRelative,
-    setIsRelative,
     searchQuery,
     setSearchQuery,
     toggleSeries,
@@ -439,21 +432,9 @@ const ChartSidebar = React.memo(function ChartSidebar({
                 <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-medium">Data Channels</CardTitle>
-                        <div className="flex items-center space-x-2">
-                            <Label htmlFor="relative-mode" className="text-xs text-muted-foreground whitespace-nowrap">
-                                Relative %
-                            </Label>
-                            <Switch
-                                id="relative-mode"
-                                checked={isRelative}
-                                onCheckedChange={setIsRelative}
-                                className="scale-75"
-                            />
-                        </div>
+
                     </div>
                     {(left !== null) && <div className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground self-start">Zoomed</div>}
-
-
 
                     <div className="relative">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
