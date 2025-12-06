@@ -6,6 +6,7 @@ export const UNITS = {
         psig: { label: "psig", toBase: (v: number) => v, fromBase: (v: number) => v }, // Base is psig
         bar: { label: "bar", toBase: (v: number) => v * 14.5038, fromBase: (v: number) => v * 0.0689476 },
         kPa: { label: "kPa", toBase: (v: number) => v * 0.145038, fromBase: (v: number) => v * 6.89476 },
+        hPa: { label: "hPa", toBase: (v: number) => v * 0.0145038, fromBase: (v: number) => v * 68.9476 },
     },
     speed: {
         mph: { label: "mph", toBase: (v: number) => v, fromBase: (v: number) => v }, // Base is mph
@@ -42,7 +43,7 @@ export function detectUnit(header: string): { name: string; unit: string; type: 
     const unit = match[2].trim();
 
     let type: UnitType = "unknown";
-    if (["psig", "psi"].includes(unit)) type = "pressure";
+    if (["psig", "psi", "hPa"].includes(unit)) type = "pressure";
     else if (["mph", "km/h"].includes(unit)) type = "speed";
     else if (["F", "C", "°F", "°C"].includes(unit)) type = "temperature";
     else if (["AFR", "Lambda", "λ"].includes(unit)) type = "afr";
