@@ -7,6 +7,9 @@ import { Button } from "@/components/ui/button";
 import { RefreshCcw, Settings, Check, Moon, Sun } from "lucide-react";
 import { ChartView } from "@/components/chart-view";
 import { useTheme } from "next-themes";
+import { useSearchParams } from "next/navigation";
+import Papa from "papaparse";
+import { toast } from "sonner";
 import { VirtualDynoDialog } from "@/components/virtual-dyno-dialog";
 import {
     DropdownMenu,
@@ -38,6 +41,62 @@ export function Dashboard() {
     const [data, setData] = React.useState<ParsedData | null>(null);
     const [preferences, setPreferences] = React.useState<UnitPreferences>(DEFAULT_PREFERENCES);
     const { setTheme, theme } = useTheme();
+    const searchParams = useSearchParams();
+
+    React.useEffect(() => {
+        const url = searchParams.get("url");
+        if (url) {
+            const fetchData = async () => {
+                const toastId = toast.loading("Fetching data from Bootmod3...");
+                try {
+                    const response = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch: ${response.statusText}`);
+                    }
+                    const csvText = await response.text();
+
+                    Papa.parse(csvText, {
+                        header: true,
+                        skipEmptyLines: true,
+                        dynamicTyping: true,
+                        complete: (results) => {
+                            if (results.errors.length > 0) {
+                                console.warn("CSV Parsing errors:", results.errors);
+                                if (results.data.length === 0) {
+                                    toast.error("Failed to parse CSV from URL", { id: toastId });
+                                    return;
+                                }
+                                toast.warning("CSV parsed with some warnings.", { id: toastId });
+                            }
+
+                            const headers = results.meta.fields || [];
+                            const data = results.data as Record<string, any>[];
+
+                            if (headers.length === 0 || data.length === 0) {
+                                toast.error("CSV file from URL appears to be empty.", { id: toastId });
+                                return;
+                            }
+
+                            setData({
+                                fileName: "Bootmod3 Log",
+                                headers,
+                                data,
+                                meta: results.meta,
+                            });
+                            toast.success("Log imported successfully", { id: toastId });
+                        },
+                        error: (err: Error) => {
+                            toast.error(`Error parsing CSV: ${err.message}`, { id: toastId });
+                        },
+                    });
+                } catch (error) {
+                    console.error("Fetch error:", error);
+                    toast.error("Failed to import from URL", { id: toastId });
+                }
+            };
+            fetchData();
+        }
+    }, [searchParams]);
 
     const handleReset = () => {
         setData(null);
