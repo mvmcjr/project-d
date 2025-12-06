@@ -43,9 +43,12 @@ export function Dashboard() {
     const { setTheme, theme } = useTheme();
     const searchParams = useSearchParams();
 
+    const lastFetchedUrl = React.useRef<string | null>(null);
+
     React.useEffect(() => {
         const url = searchParams.get("url");
-        if (url) {
+        if (url && url !== lastFetchedUrl.current) {
+            lastFetchedUrl.current = url;
             const fetchData = async () => {
                 const toastId = toast.loading("Fetching data from Bootmod3...");
                 try {
