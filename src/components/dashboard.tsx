@@ -80,6 +80,16 @@ export function Dashboard() {
                                 return;
                             }
 
+                            // Update preferences based on file units
+                            const newPreferences = { ...DEFAULT_PREFERENCES };
+                            headers.forEach(header => {
+                                const detected = detectUnit(header);
+                                if (detected && detected.type !== "unknown") {
+                                    newPreferences[detected.type] = detected.unit;
+                                }
+                            });
+                            setPreferences(newPreferences);
+
                             setData({
                                 fileName: "Bootmod3 Log",
                                 headers,
@@ -149,17 +159,41 @@ export function Dashboard() {
     };
 
     // Process data with conversions
-    const processedData = React.useMemo(() => {
-        if (!data) return null;
+    const { processedData, conversionMetadata } = React.useMemo(() => {
+        if (!data) return { processedData: null, conversionMetadata: {} };
+
+        const conversionMetadata: Record<string, { originalHeader: string, originalUnit: string, targetUnit: string, isConverted: boolean, hasError: boolean }> = {};
 
         const newHeaders = data.headers.map(header => {
             const detected = detectUnit(header);
             if (detected && detected.type !== "unknown") {
                 const targetUnit = preferences[detected.type];
-                if (targetUnit && targetUnit !== detected.unit) {
-                    return header.replace(`[${detected.unit}]`, `[${targetUnit}]`);
-                }
+
+                const isConverted = targetUnit && targetUnit !== detected.unit;
+
+                // Construct new header name
+                const newHeader = isConverted
+                    ? header.replace(`[${detected.unit}]`, `[${targetUnit}]`)
+                    : header;
+
+                conversionMetadata[newHeader] = {
+                    originalHeader: header,
+                    originalUnit: detected.unit,
+                    targetUnit: targetUnit || detected.unit,
+                    isConverted: !!isConverted,
+                    hasError: false
+                };
+
+                return newHeader;
             }
+
+            conversionMetadata[header] = {
+                originalHeader: header,
+                originalUnit: "",
+                targetUnit: "",
+                isConverted: false,
+                hasError: false
+            };
             return header;
         });
 
@@ -168,14 +202,22 @@ export function Dashboard() {
             data.headers.forEach((header, index) => {
                 const value = row[header];
                 const newHeader = newHeaders[index];
+                const meta = conversionMetadata[newHeader];
                 const detected = detectUnit(header);
 
-                if (detected && detected.type !== "unknown" && typeof value === 'number') {
-                    const targetUnit = preferences[detected.type];
-                    if (targetUnit) {
-                        newRow[newHeader] = convertValue(value, detected.type, detected.unit, targetUnit);
-                        return;
+                if (meta.isConverted && detected && typeof value === 'number') {
+                    const converted = convertValue(value, detected.type, detected.unit, meta.targetUnit);
+
+                    // Robustness check
+                    if (isNaN(converted) || !isFinite(converted)) {
+                        meta.hasError = true;
+                        newRow[newHeader] = value; // Fallback to original
+                        newRow[`__original_${newHeader}`] = value;
+                    } else {
+                        newRow[newHeader] = converted;
+                        newRow[`__original_${newHeader}`] = value;
                     }
+                    return;
                 }
                 newRow[newHeader] = value;
             });
@@ -183,9 +225,12 @@ export function Dashboard() {
         });
 
         return {
-            ...data,
-            headers: newHeaders,
-            data: newData,
+            processedData: {
+                ...data,
+                headers: newHeaders,
+                data: newData,
+            },
+            conversionMetadata
         };
     }, [data, preferences]);
 
@@ -319,7 +364,7 @@ export function Dashboard() {
             </header>
 
             <main className="flex-1 overflow-hidden p-4 bg-muted/20">
-                <ChartView data={processedData} />
+                <ChartView data={processedData} conversionMetadata={conversionMetadata} />
             </main>
         </div>
     );

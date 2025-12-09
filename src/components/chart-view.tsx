@@ -16,7 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RotateCcw, Search } from "lucide-react";
+import { RotateCcw, Search, AlertTriangle, ArrowRightLeft } from "lucide-react";
 import { ParsedData } from "@/lib/types";
 import { calculateStats } from "@/lib/stats";
 import { generateColors } from "@/lib/utils";
@@ -29,8 +29,18 @@ import {
     ChartLegendContent
 } from "@/components/ui/chart";
 
+
+export interface ConversionSchema {
+    originalHeader: string;
+    originalUnit: string;
+    targetUnit: string;
+    isConverted: boolean;
+    hasError: boolean;
+}
+
 interface ChartViewProps {
     data: ParsedData;
+    conversionMetadata?: Record<string, ConversionSchema>;
 }
 
 
@@ -59,7 +69,7 @@ const CustomDot = (props: any) => {
 // Helper to sanitize keys for CSS variables
 const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, "_");
 
-export function ChartView({ data }: ChartViewProps) {
+export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
     // 1. Sanitize Data & Headers
     const { processedData, headerMap, safeHeaders } = React.useMemo(() => {
         const safeMap: Record<string, string> = { "Time": "Time" };
@@ -97,6 +107,11 @@ export function ChartView({ data }: ChartViewProps) {
                 const sKey = safeMap[k];
                 if (k !== "Time" && sKey) {
                     newRow[sKey] = row[k];
+                    // Also copy hidden original field if it exists
+                    const origKey = `__original_${k}`;
+                    if (row[origKey] !== undefined) {
+                        newRow[`__original_${sKey}`] = row[origKey];
+                    }
                 }
             });
             return newRow;
@@ -395,6 +410,7 @@ export function ChartView({ data }: ChartViewProps) {
                 toggleSeries={toggleSeries}
                 deselectAll={deselectAll}
                 left={left}
+                conversionMetadata={conversionMetadata}
             />
         </div>
     );
@@ -412,6 +428,7 @@ interface ChartSidebarProps {
     toggleSeries: (safeKey: string) => void;
     deselectAll: () => void;
     left: number | null;
+    conversionMetadata: Record<string, ConversionSchema>;
 }
 
 const ChartSidebar = React.memo(function ChartSidebar({
@@ -425,6 +442,7 @@ const ChartSidebar = React.memo(function ChartSidebar({
     toggleSeries,
     deselectAll,
     left,
+    conversionMetadata,
 }: ChartSidebarProps) {
     return (
         <div className="w-full md:w-80 flex-shrink-0 flex flex-col h-[300px] md:h-full">
@@ -472,6 +490,13 @@ const ChartSidebar = React.memo(function ChartSidebar({
                                     const color = config?.color;
                                     const stat = stats[safeKey];
 
+                                    // Get conversion info using original full header name from map
+                                    // Actually conversionMetadata is keyed by the *new* header name (which matches the one in data)
+                                    // but we have safeKeys.
+                                    // headerMap[safeKey] gives the current header name (e.g. "Boost [psi]")
+                                    const currentHeader = headerMap[safeKey];
+                                    const convInfo = conversionMetadata[currentHeader];
+
                                     return (
                                         <div key={safeKey} className={`p-3 transition-colors hover:bg-muted/50 ${isSelected ? "bg-muted/30" : ""}`}>
                                             <div className="flex items-start gap-3">
@@ -485,12 +510,28 @@ const ChartSidebar = React.memo(function ChartSidebar({
                                                     <div className="flex items-center justify-between">
                                                         <Label
                                                             htmlFor={safeKey}
-                                                            className={`text-sm font-medium leading-none cursor-pointer ${isSelected ? "" : "text-muted-foreground"}`}
+                                                            className={`text-sm font-medium leading-none cursor-pointer flex items-center gap-2 ${isSelected ? "" : "text-muted-foreground"}`}
                                                             style={{ color: isSelected ? color : undefined }}
                                                         >
                                                             {headerMap[safeKey]}
+                                                            {convInfo?.hasError && (
+                                                                <span title="Conversion Failed">
+                                                                    <AlertTriangle className="h-3 w-3 text-destructive" />
+                                                                </span>
+                                                            )}
+                                                            {convInfo?.isConverted && !convInfo.hasError && (
+                                                                <span title={`Converted from ${convInfo.originalUnit}`}>
+                                                                    <ArrowRightLeft className="h-3 w-3 text-muted-foreground opacity-70" />
+                                                                </span>
+                                                            )}
                                                         </Label>
                                                     </div>
+
+                                                    {convInfo?.isConverted && (
+                                                        <div className="text-[10px] text-muted-foreground pl-0.5">
+                                                            Original: {convInfo.originalUnit} → {convInfo.targetUnit}
+                                                        </div>
+                                                    )}
 
                                                     {/* Stats Grid - Only show if stats are available for this series */}
                                                     {stat && (
