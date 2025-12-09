@@ -51,18 +51,42 @@ export function detectUnit(header: string): { name: string; unit: string; type: 
     else if (["hp", "kW", "cv", "whp"].includes(unit)) type = "power";
     else if (["rpm", "RPM"].includes(unit)) type = "rpm";
 
-    return { name, unit, type };
+    // Normalize unit label to match our internal unit keys if possible
+    // This ensures that when we set the preference, it matches a valid option in the dropdown
+    let normalizedUnit = unit;
+    if (type !== 'unknown') {
+        const unitGroup = UNITS[type as keyof typeof UNITS] as Record<string, { label: string }>;
+        if (unitGroup) {
+            // Try to find by key or label
+            const match = Object.entries(unitGroup).find(([key, u]) => key === unit || u.label === unit);
+            if (match) {
+                normalizedUnit = match[1].label;
+            } else {
+                // specific overrides if exact match failed (e.g. C -> °C)
+                if (type === 'temperature') {
+                    if (unit === 'C') normalizedUnit = '°C';
+                    if (unit === 'F') normalizedUnit = '°F';
+                }
+            }
+        }
+    }
+
+    return { name, unit: normalizedUnit, type };
 }
 
 export function convertValue(value: number, type: UnitType, fromUnit: string, toUnit: string): number {
     if (type === "unknown" || fromUnit === toUnit) return value;
 
     // Generic conversion using base units if available
-    // (This simplifies the manual if/else blocks below)
     const unitGroup = UNITS[type as keyof typeof UNITS] as Record<string, { label: string; toBase: (v: number) => number; fromBase: (v: number) => number }>;
     if (unitGroup) {
-        const fromDef = Object.values(unitGroup).find((u) => u.label === fromUnit);
-        const toDef = Object.values(unitGroup).find((u) => u.label === toUnit);
+        // Find definition by label OR by key
+        const findDef = (uName: string) => {
+            return Object.entries(unitGroup).find(([key, u]) => u.label === uName || key === uName)?.[1];
+        };
+
+        const fromDef = findDef(fromUnit);
+        const toDef = findDef(toUnit);
 
         if (fromDef && toDef) {
             const baseVal = fromDef.toBase(value);

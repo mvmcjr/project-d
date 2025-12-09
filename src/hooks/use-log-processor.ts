@@ -22,6 +22,31 @@ export function useLogProcessor(data: ParsedData | null) {
         setPreferences((prev) => ({ ...prev, [type]: unit }));
     }, []);
 
+    // Initialize preferences from file data when loaded
+    React.useEffect(() => {
+        if (data && data.headers) {
+            const newPreferences = { ...DEFAULT_PREFERENCES };
+            let hasChanges = false;
+
+            data.headers.forEach(header => {
+                const detected = detectUnit(header);
+                if (detected && detected.type !== "unknown") {
+                    // Update preference to match file unit
+                    if (newPreferences[detected.type] !== detected.unit) {
+                        newPreferences[detected.type] = detected.unit;
+                        hasChanges = true;
+                    }
+                }
+            });
+
+            if (hasChanges) {
+                setPreferences(newPreferences);
+            }
+        } else if (!data) {
+            setPreferences(DEFAULT_PREFERENCES);
+        }
+    }, [data]);
+
     const { processedData, conversionMetadata } = React.useMemo(() => {
         if (!data) return { processedData: null, conversionMetadata: {} };
 
