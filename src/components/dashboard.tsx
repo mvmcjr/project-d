@@ -3,45 +3,26 @@
 import * as React from "react";
 import { FileUpload } from "@/components/file-upload";
 import { ParsedData } from "@/lib/types";
-import { Button } from "@/components/ui/button";
-import { RefreshCcw, Settings, Check, Moon, Sun } from "lucide-react";
 import { ChartView } from "@/components/chart-view";
-import { useTheme } from "next-themes";
 import { useSearchParams } from "next/navigation";
 import Papa from "papaparse";
 import { toast } from "sonner";
-import { VirtualDynoDialog } from "@/components/virtual-dyno-dialog";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    DropdownMenuSub,
-    DropdownMenuSubTrigger,
-    DropdownMenuSubContent,
-} from "@/components/ui/dropdown-menu";
-import { UNITS, detectUnit, convertValue, UnitType } from "@/lib/conversions";
-
-type UnitPreferences = Record<UnitType, string>;
-
-const DEFAULT_PREFERENCES: UnitPreferences = {
-    pressure: "psig",
-    speed: "mph",
-    temperature: "F",
-    afr: "AFR",
-    torque: "Nm",
-    unknown: "",
-    power: "hp",
-    rpm: "rpm",
-};
+import { detectUnit, convertValue } from "@/lib/conversions";
+import { useLogProcessor, DEFAULT_PREFERENCES } from "@/hooks/use-log-processor";
+import { DashboardHeader } from "@/components/dashboard/header";
 
 export function Dashboard() {
     const [data, setData] = React.useState<ParsedData | null>(null);
-    const [preferences, setPreferences] = React.useState<UnitPreferences>(DEFAULT_PREFERENCES);
-    const { setTheme, theme } = useTheme();
     const searchParams = useSearchParams();
+
+    // Custom hook for processing data and managing unit preferences
+    const {
+        preferences,
+        setPreferences,
+        setUnit,
+        processedData,
+        conversionMetadata
+    } = useLogProcessor(data);
 
     const lastFetchedUrl = React.useRef<string | null>(null);
 
@@ -109,14 +90,10 @@ export function Dashboard() {
             };
             fetchData();
         }
-    }, [searchParams]);
+    }, [searchParams, setPreferences]);
 
     const handleReset = () => {
         setData(null);
-    };
-
-    const setUnit = (type: UnitType, unit: string) => {
-        setPreferences((prev) => ({ ...prev, [type]: unit }));
     };
 
     const handleCalculatePower = (rpmHeader: string, torqueHeader: string, targetUnit: string) => {
@@ -134,8 +111,6 @@ export function Dashboard() {
                 let torqueNm = torque;
                 if (torqueUnitInfo && torqueUnitInfo.type === 'torque') {
                     // Convert to base (Nm)
-                    // Note: convertValue converts FROM current TO target.
-                    // We want FROM current TO 'Nm'.
                     torqueNm = convertValue(torque, 'torque', torqueUnitInfo.unit, 'Nm');
                 }
 
@@ -158,82 +133,6 @@ export function Dashboard() {
         });
     };
 
-    // Process data with conversions
-    const { processedData, conversionMetadata } = React.useMemo(() => {
-        if (!data) return { processedData: null, conversionMetadata: {} };
-
-        const conversionMetadata: Record<string, { originalHeader: string, originalUnit: string, targetUnit: string, isConverted: boolean, hasError: boolean }> = {};
-
-        const newHeaders = data.headers.map(header => {
-            const detected = detectUnit(header);
-            if (detected && detected.type !== "unknown") {
-                const targetUnit = preferences[detected.type];
-
-                const isConverted = targetUnit && targetUnit !== detected.unit;
-
-                // Construct new header name
-                const newHeader = isConverted
-                    ? header.replace(`[${detected.unit}]`, `[${targetUnit}]`)
-                    : header;
-
-                conversionMetadata[newHeader] = {
-                    originalHeader: header,
-                    originalUnit: detected.unit,
-                    targetUnit: targetUnit || detected.unit,
-                    isConverted: !!isConverted,
-                    hasError: false
-                };
-
-                return newHeader;
-            }
-
-            conversionMetadata[header] = {
-                originalHeader: header,
-                originalUnit: "",
-                targetUnit: "",
-                isConverted: false,
-                hasError: false
-            };
-            return header;
-        });
-
-        const newData = data.data.map(row => {
-            const newRow: Record<string, number | string | null> = {};
-            data.headers.forEach((header, index) => {
-                const value = row[header];
-                const newHeader = newHeaders[index];
-                const meta = conversionMetadata[newHeader];
-                const detected = detectUnit(header);
-
-                if (meta.isConverted && detected && typeof value === 'number') {
-                    const converted = convertValue(value, detected.type, detected.unit, meta.targetUnit);
-
-                    // Robustness check
-                    if (isNaN(converted) || !isFinite(converted)) {
-                        meta.hasError = true;
-                        newRow[newHeader] = value; // Fallback to original
-                        newRow[`__original_${newHeader}`] = value;
-                    } else {
-                        newRow[newHeader] = converted;
-                        newRow[`__original_${newHeader}`] = value;
-                    }
-                    return;
-                }
-                newRow[newHeader] = value;
-            });
-            return newRow;
-        });
-
-        return {
-            processedData: {
-                ...data,
-                headers: newHeaders,
-                data: newData,
-            },
-            conversionMetadata
-        };
-    }, [data, preferences]);
-
     if (!processedData || !data) {
         return (
             <div className="container mx-auto max-w-2xl py-20 px-4">
@@ -252,116 +151,14 @@ export function Dashboard() {
 
     return (
         <div className="flex flex-col h-screen overflow-hidden bg-background text-foreground transition-colors duration-300">
-            <header className="border-b bg-background/95 backdrop-blur z-50">
-                <div className="container flex h-14 items-center justify-between px-4">
-                    <div className="flex items-center gap-2 font-bold text-lg">
-                        <span className="hidden sm:inline bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent italic">Project D</span>
-                        <span className="font-normal text-muted-foreground text-sm border-l pl-2 ml-2 truncate max-w-[200px]">
-                            {processedData.fileName}
-                        </span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <VirtualDynoDialog
-                            channels={data.headers}
-                            onCalculate={handleCalculatePower}
-                        />
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm">
-                                    <Settings className="mr-2 h-4 w-4" />
-                                    Units
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                                <DropdownMenuLabel>Unit Preferences</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>
-                                        Pressure ({preferences.pressure})
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent>
-                                        {Object.values(UNITS.pressure).map((u) => (
-                                            <DropdownMenuItem key={u.label} onClick={() => setUnit("pressure", u.label)}>
-                                                {u.label}
-                                                {preferences.pressure === u.label && <Check className="ml-auto h-4 w-4" />}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>
-                                        Speed ({preferences.speed})
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent>
-                                        {Object.values(UNITS.speed).map((u) => (
-                                            <DropdownMenuItem key={u.label} onClick={() => setUnit("speed", u.label)}>
-                                                {u.label}
-                                                {preferences.speed === u.label && <Check className="ml-auto h-4 w-4" />}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>
-                                        Temperature ({preferences.temperature})
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent>
-                                        {Object.values(UNITS.temperature).map((u) => (
-                                            <DropdownMenuItem key={u.label} onClick={() => setUnit("temperature", u.label)}>
-                                                {u.label}
-                                                {preferences.temperature === u.label && <Check className="ml-auto h-4 w-4" />}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>
-                                        AFR ({preferences.afr})
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent>
-                                        {Object.values(UNITS.afr).map((u) => (
-                                            <DropdownMenuItem key={u.label} onClick={() => setUnit("afr", u.label)}>
-                                                {u.label}
-                                                {preferences.afr === u.label && <Check className="ml-auto h-4 w-4" />}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>
-                                        Torque ({preferences.torque})
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent>
-                                        {Object.values(UNITS.torque).map((u) => (
-                                            <DropdownMenuItem key={u.label} onClick={() => setUnit("torque", u.label)}>
-                                                {u.label}
-                                                {preferences.torque === u.label && <Check className="ml-auto h-4 w-4" />}
-                                            </DropdownMenuItem>
-                                        ))}
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
-                        <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-                            <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                            <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                            <span className="sr-only">Toggle theme</span>
-                        </Button>
-
-                        <Button variant="ghost" size="sm" onClick={handleReset}>
-                            <RefreshCcw className="mr-2 h-4 w-4" />
-                            Reset
-                        </Button>
-                    </div>
-                </div>
-            </header>
+            <DashboardHeader
+                fileName={processedData.fileName}
+                preferences={preferences}
+                setUnit={setUnit}
+                onReset={handleReset}
+                dataHeaders={data.headers}
+                onCalculatePower={handleCalculatePower}
+            />
 
             <main className="flex-1 overflow-hidden p-4 bg-muted/20">
                 <ChartView data={processedData} conversionMetadata={conversionMetadata} />

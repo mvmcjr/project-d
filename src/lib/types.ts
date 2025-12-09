@@ -6,3 +6,12 @@ export interface ParsedData {
     data: DataPoint[];
     meta: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 }
+
+export interface ConversionSchema {
+    originalHeader: string;
+    originalUnit: string;
+    targetUnit: string;
+    isConverted: boolean;
+    hasError: boolean;
+}
+
