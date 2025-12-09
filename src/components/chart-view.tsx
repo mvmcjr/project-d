@@ -228,6 +228,80 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
         }
     }, [refAreaLeft]);
 
+    const handleSmartZoom = React.useCallback((criteria: { field: string; operator: '>' | '<' | '='; value: number }) => {
+        // Find the safeKey for the human readable field
+        // field passed from dialog is the human readable name (because we map keys)
+        // Wait, SmartZoomDialog receives `filteredHeaders` or `headerMap`?
+        // It receives whatever we pass. Ideally we pass the safe keys but show readable names?
+        // Let's assume we pass what we have.
+        // In ChartSidebar we use `headerMap` to display.
+
+        // Find safeKey from the display name (reverse lookup)
+        const safeKey = Object.keys(headerMap).find(k => headerMap[k] === criteria.field);
+        if (!safeKey) return;
+
+        // Find segments
+        const segments: { start: number; end: number; duration: number }[] = [];
+        let currentStart: number | null = null;
+        let lastMatchIndex = -1;
+
+        // We use full processedData to scan
+        for (let i = 0; i < processedData.length; i++) {
+            const row = processedData[i];
+            const val = row[safeKey];
+            const time = row.Time;
+
+            if (typeof val !== 'number' || typeof time !== 'number') continue;
+
+            let matches = false;
+            switch (criteria.operator) {
+                case '>': matches = val >= criteria.value; break; // inclusive for ease
+                case '<': matches = val <= criteria.value; break;
+                case '=': matches = Math.abs(val - criteria.value) < 0.001; break;
+            }
+
+            if (matches) {
+                if (currentStart === null) {
+                    currentStart = time;
+                }
+                lastMatchIndex = i;
+            } else {
+                if (currentStart !== null) {
+                    // Segment ended
+                    // Use time from LAST MATCH, not current non-matching row
+                    const endTime = Number(processedData[lastMatchIndex].Time);
+                    segments.push({ start: currentStart, end: endTime, duration: endTime - currentStart });
+                    currentStart = null;
+                }
+            }
+        }
+
+        // Close last segment if active
+        if (currentStart !== null && lastMatchIndex !== -1) {
+            const endTime = Number(processedData[lastMatchIndex].Time);
+            segments.push({ start: currentStart, end: endTime, duration: endTime - currentStart });
+        }
+
+        if (segments.length > 0) {
+            // Pick longest segment
+            segments.sort((a, b) => b.duration - a.duration);
+            const best = segments[0];
+
+            // Add some padding (e.g. 10% of duration or 1 sec)
+            const padding = Math.max(best.duration * 0.1, 0.5);
+            setLeft(Math.max(0, best.start - padding));
+            setRight(best.end + padding);
+
+            // Also ensure the series is toggled ON if not already
+            if (!selectedSafeSeries.includes(safeKey)) {
+                toggleSeries(safeKey);
+            }
+        } else {
+            // Optional: Maybe show a toast/alert that no segments were found?
+            // For now just do nothing.
+        }
+    }, [processedData, headerMap, selectedSafeSeries, toggleSeries]);
+
     return (
         <div className="flex flex-col md:flex-row h-full gap-4">
             <ChartArea
@@ -259,6 +333,7 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                 deselectAll={deselectAll}
                 left={left}
                 conversionMetadata={conversionMetadata}
+                onSmartZoom={handleSmartZoom}
             />
         </div>
     );

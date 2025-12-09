@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChartConfig } from "@/components/ui/chart";
 import { ConversionSchema } from "@/lib/types";
+import { SmartZoomDialog, SmartZoomCriteria } from "./smart-zoom-dialog";
 
 export interface ChartSidebarProps {
     filteredHeaders: string[];
@@ -23,6 +24,7 @@ export interface ChartSidebarProps {
     deselectAll: () => void;
     left: number | null;
     conversionMetadata: Record<string, ConversionSchema>;
+    onSmartZoom: (criteria: SmartZoomCriteria) => void;
 }
 
 export const ChartSidebar = React.memo(function ChartSidebar({
@@ -37,14 +39,21 @@ export const ChartSidebar = React.memo(function ChartSidebar({
     deselectAll,
     left,
     conversionMetadata,
+    onSmartZoom
 }: ChartSidebarProps) {
+    // Generate full list of readable headers for Smart Zoom
+    // We use all headers available in the map, not just filtered ones
+    const allReadableHeaders = React.useMemo(() => {
+        return Object.values(headerMap).sort();
+    }, [headerMap]);
+
     return (
         <div className="w-full md:w-80 flex-shrink-0 flex flex-col h-[300px] md:h-full">
             <Card className="h-full flex flex-col border-none md:border shadow-sm">
                 <CardHeader className="py-4 px-4 sticky top-0 bg-card z-10 border-b space-y-3">
                     <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-medium">Data Channels</CardTitle>
-
+                        <SmartZoomDialog fields={allReadableHeaders} onZoom={onSmartZoom} />
                     </div>
                     {(left !== null) && <div className="text-[10px] bg-muted px-2 py-1 rounded text-muted-foreground self-start">Zoomed</div>}
 
