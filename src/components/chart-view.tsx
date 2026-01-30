@@ -70,6 +70,9 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
 
     const [selectedSafeSeries, setSelectedSafeSeries] = React.useState<string[]>([]);
 
+    // Pins State
+    const [pins, setPins] = React.useState<number[]>([]);
+
     // Zoom State
     const [left, setLeft] = React.useState<number | null>(null);
     const [right, setRight] = React.useState<number | null>(null);
@@ -112,6 +115,17 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
 
     const deselectAll = React.useCallback(() => {
         setSelectedSafeSeries([]);
+    }, []);
+
+    const addPin = React.useCallback((time: number) => {
+        setPins(prev => {
+            if (prev.includes(time)) return prev;
+            return [...prev, time].sort((a, b) => a - b);
+        });
+    }, []);
+
+    const removePin = React.useCallback((time: number) => {
+        setPins(prev => prev.filter(t => t !== time));
     }, []);
 
     const filteredHeaders = React.useMemo(() => {
@@ -319,6 +333,9 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                 zoomOut={zoomOut}
                 handleMouseDown={handleMouseDown}
                 handleMouseMove={handleMouseMove}
+                pins={pins}
+                onAddPin={addPin}
+                onRemovePin={removePin}
             />
 
             <ChartSidebar
