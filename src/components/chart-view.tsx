@@ -377,7 +377,7 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                             variant="outline"
                             size="sm"
                             onClick={() => setShowDataTable(!showDataTable)}
-                            className={cn("gap-2 bg-background/80 backdrop-blur-sm", showDataTable && "bg-primary text-primary-foreground")}
+                            className="gap-2 bg-background/80 backdrop-blur-sm"
                         >
                             <TableProperties className="h-4 w-4" />
                             {showDataTable ? "Hide Table" : "Show Table"}
