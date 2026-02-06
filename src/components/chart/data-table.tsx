@@ -57,7 +57,8 @@ export function DataTable({ data, selectedSafeSeries, headerMap, hoveredTime }: 
 
     return (
         <div className="flex flex-col h-full border rounded-md overflow-hidden bg-card">
-            <div className="p-3 border-b bg-muted/30">
+            {/* Info Header */}
+            <div className="p-3 border-b bg-muted/30 shrink-0">
                 <div className="flex items-center justify-between mb-1">
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                         Data Table
@@ -77,7 +78,7 @@ export function DataTable({ data, selectedSafeSeries, headerMap, hoveredTime }: 
                 </div>
             </div>
             {/* Column Headers - Fixed */}
-            <div className="border-b bg-muted/50">
+            <div className="border-b bg-muted/50 shrink-0">
                 <div className="flex">
                     <div className="w-24 shrink-0 px-3 py-2 font-mono text-xs font-medium text-muted-foreground">
                         Time (s)
@@ -90,7 +91,7 @@ export function DataTable({ data, selectedSafeSeries, headerMap, hoveredTime }: 
                 </div>
             </div>
             {/* Scrollable Data Rows */}
-            <ScrollArea className="flex-1">
+            <div className="flex-1 overflow-auto min-h-0">
                 <Table>
                     <TableBody>
                         {data.map((row, idx) => {
@@ -124,7 +125,7 @@ export function DataTable({ data, selectedSafeSeries, headerMap, hoveredTime }: 
                         })}
                     </TableBody>
                 </Table>
-            </ScrollArea>
+            </div>
         </div>
     );
 }
