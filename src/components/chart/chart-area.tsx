@@ -47,6 +47,7 @@ interface ChartAreaProps {
     pins: number[];
     onAddPin: (time: number) => void;
     onRemovePin: (time: number) => void;
+    onHoverTimeChange?: (time: number | null) => void;
 }
 
 export function ChartArea({
@@ -66,7 +67,8 @@ export function ChartArea({
     handleMouseMove,
     pins,
     onAddPin,
-    onRemovePin
+    onRemovePin,
+    onHoverTimeChange
 }: ChartAreaProps) {
     const lastActiveTimeRef = React.useRef<number | null>(null);
 
@@ -74,6 +76,9 @@ export function ChartArea({
         handleMouseMove(e);
         if (e && e.activeLabel !== undefined) {
             lastActiveTimeRef.current = e.activeLabel;
+            onHoverTimeChange?.(e.activeLabel);
+        } else {
+            onHoverTimeChange?.(null);
         }
     };
 

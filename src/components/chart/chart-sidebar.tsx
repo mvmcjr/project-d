@@ -22,6 +22,7 @@ export interface ChartSidebarProps {
     setSearchQuery: (value: string) => void;
     toggleSeries: (safeKey: string) => void;
     deselectAll: () => void;
+    selectAll: () => void;
     left: number | null;
     conversionMetadata: Record<string, ConversionSchema>;
     onSmartZoom: (criteria: SmartZoomCriteria) => void;
@@ -37,6 +38,7 @@ export const ChartSidebar = React.memo(function ChartSidebar({
     setSearchQuery,
     toggleSeries,
     deselectAll,
+    selectAll,
     left,
     conversionMetadata,
     onSmartZoom
@@ -71,11 +73,18 @@ export const ChartSidebar = React.memo(function ChartSidebar({
                         <CardDescription className="text-xs">
                             {selectedSafeSeries.length} selected
                         </CardDescription>
-                        {selectedSafeSeries.length > 0 && (
-                            <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive" onClick={deselectAll}>
-                                Deselect All
-                            </Button>
-                        )}
+                        <div className="flex gap-1">
+                            {filteredHeaders.some(h => !selectedSafeSeries.includes(h)) && (
+                                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground hover:text-primary" onClick={selectAll}>
+                                    Select All
+                                </Button>
+                            )}
+                            {selectedSafeSeries.length > 0 && (
+                                <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2 text-muted-foreground hover:text-destructive" onClick={deselectAll}>
+                                    Deselect All
+                                </Button>
+                            )}
+                        </div>
                     </div>
 
                 </CardHeader>

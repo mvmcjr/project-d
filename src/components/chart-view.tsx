@@ -8,6 +8,11 @@ import { detectUnit } from "@/lib/conversions";
 import { ChartSidebar } from "./chart/chart-sidebar";
 import { ChartArea } from "./chart/chart-area";
 import { ChartConfig } from "@/components/ui/chart";
+import { DataTable } from "./chart/data-table";
+import { TableProperties, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface ChartViewProps {
     data: ParsedData;
@@ -82,6 +87,17 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
     // Search State
     const [searchQuery, setSearchQuery] = React.useState("");
 
+    const filteredHeaders = React.useMemo(() => {
+        if (!searchQuery) return safeHeaders;
+        return safeHeaders.filter(safeKey =>
+            headerMap[safeKey].toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [safeHeaders, headerMap, searchQuery]);
+
+    // Hover & Table State
+    const [hoveredTime, setHoveredTime] = React.useState<number | null>(null);
+    const [showDataTable, setShowDataTable] = React.useState(false);
+
     // Track previous headers to detect new additions
     const prevSafeHeadersRef = React.useRef<string[]>([]);
 
@@ -117,6 +133,14 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
         setSelectedSafeSeries([]);
     }, []);
 
+    const selectAll = React.useCallback(() => {
+        // Select all filtered headers
+        setSelectedSafeSeries(prev => {
+            const newSelection = new Set([...prev, ...filteredHeaders]);
+            return Array.from(newSelection);
+        });
+    }, [filteredHeaders]);
+
     const addPin = React.useCallback((time: number) => {
         setPins(prev => {
             if (prev.includes(time)) return prev;
@@ -127,13 +151,6 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
     const removePin = React.useCallback((time: number) => {
         setPins(prev => prev.filter(t => t !== time));
     }, []);
-
-    const filteredHeaders = React.useMemo(() => {
-        if (!searchQuery) return safeHeaders;
-        return safeHeaders.filter(safeKey =>
-            headerMap[safeKey].toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [safeHeaders, headerMap, searchQuery]);
 
     const viewData = React.useMemo(() => {
         if (left === null || right === null) return processedData;
@@ -207,6 +224,41 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
         });
         return config;
     }, [safeHeaders, headerMap, stableColors]);
+
+    const exportToCSV = React.useCallback(() => {
+        if (!viewData.length) return;
+
+        try {
+            // Columns: Time + Selected Series
+            const headers = ["Time", ...selectedSafeSeries];
+            const readableHeaders = ["Time (s)", ...selectedSafeSeries.map(s => headerMap[s])];
+
+            const csvRows = [
+                readableHeaders.join(","),
+                ...viewData.map(row =>
+                    headers.map(h => {
+                        const val = row[h];
+                        return typeof val === 'number' ? val.toFixed(4) : `"${val}"`;
+                    }).join(",")
+                )
+            ];
+
+            const csvContent = csvRows.join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `log_export_${new Date().getTime()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            toast.success("CSV exported successfully");
+        } catch (error) {
+            console.error("Export failed:", error);
+            toast.error("Failed to export CSV");
+        }
+    }, [viewData, selectedSafeSeries, headerMap]);
 
     const zoom = React.useCallback(() => {
         if (refAreaLeft === refAreaRight || refAreaLeft === null || refAreaRight === null) {
@@ -318,25 +370,62 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
 
     return (
         <div className="flex flex-col md:flex-row h-full gap-4">
-            <ChartArea
-                chartData={chartData}
-                chartConfig={chartConfig}
-                selectedSafeSeries={selectedSafeSeries}
-                activeUnits={activeUnits}
-                uniqueUnits={uniqueUnits}
-                minMaxTimes={minMaxTimes}
-                left={left}
-                right={right}
-                refAreaLeft={refAreaLeft}
-                refAreaRight={refAreaRight}
-                zoom={zoom}
-                zoomOut={zoomOut}
-                handleMouseDown={handleMouseDown}
-                handleMouseMove={handleMouseMove}
-                pins={pins}
-                onAddPin={addPin}
-                onRemovePin={removePin}
-            />
+            <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                <div className="flex-1 min-h-0 relative">
+                    <div className="absolute top-2 left-2 z-20 flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowDataTable(!showDataTable)}
+                            className={cn("gap-2 bg-background/80 backdrop-blur-sm", showDataTable && "bg-primary text-primary-foreground")}
+                        >
+                            <TableProperties className="h-4 w-4" />
+                            {showDataTable ? "Hide Table" : "Show Table"}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={exportToCSV}
+                            className="gap-2 bg-background/80 backdrop-blur-sm"
+                        >
+                            <Download className="h-4 w-4" />
+                            Export CSV
+                        </Button>
+                    </div>
+
+                    <ChartArea
+                        chartData={chartData}
+                        chartConfig={chartConfig}
+                        selectedSafeSeries={selectedSafeSeries}
+                        activeUnits={activeUnits}
+                        uniqueUnits={uniqueUnits}
+                        minMaxTimes={minMaxTimes}
+                        left={left}
+                        right={right}
+                        refAreaLeft={refAreaLeft}
+                        refAreaRight={refAreaRight}
+                        zoom={zoom}
+                        zoomOut={zoomOut}
+                        handleMouseDown={handleMouseDown}
+                        handleMouseMove={handleMouseMove}
+                        pins={pins}
+                        onAddPin={addPin}
+                        onRemovePin={removePin}
+                        onHoverTimeChange={setHoveredTime}
+                    />
+                </div>
+
+                {showDataTable && (
+                    <div className="h-1/3 min-h-[200px] border-t pt-4">
+                        <DataTable
+                            data={chartData} // Use chartData for performance, it matches the points on chart
+                            selectedSafeSeries={selectedSafeSeries}
+                            headerMap={headerMap}
+                            hoveredTime={hoveredTime}
+                        />
+                    </div>
+                )}
+            </div>
 
             <ChartSidebar
                 filteredHeaders={filteredHeaders}
@@ -348,6 +437,7 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                 setSearchQuery={setSearchQuery}
                 toggleSeries={toggleSeries}
                 deselectAll={deselectAll}
+                selectAll={selectAll}
                 left={left}
                 conversionMetadata={conversionMetadata}
                 onSmartZoom={handleSmartZoom}
