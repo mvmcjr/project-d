@@ -35,7 +35,12 @@ interface ChartAreaProps {
     selectedSafeSeries: string[];
     activeUnits: Record<string, string>;
     uniqueUnits: string[];
-    minMaxTimes: Set<number>;
+    /** Times of global min/max points (from sidebar stats) */
+    globalMinMaxTimes: Set<number>;
+    /** Per-channel peak times */
+    peakTimesMap: Map<string, Set<number>>;
+    /** Per-channel valley times */
+    valleyTimesMap: Map<string, Set<number>>;
     left: number | null;
     right: number | null;
     refAreaLeft: number | null;
@@ -56,7 +61,9 @@ export function ChartArea({
     selectedSafeSeries,
     activeUnits,
     uniqueUnits,
-    minMaxTimes,
+    globalMinMaxTimes,
+    peakTimesMap,
+    valleyTimesMap,
     left,
     right,
     refAreaLeft,
@@ -179,10 +186,11 @@ export function ChartArea({
                                         isAnimationActive={false}
                                         dot={(props: any) => {
                                             const { cx, cy, payload, value } = props;
+                                            const time = payload?.Time;
 
-                                            // 1. Render Pin if present
-                                            if (pins.includes(payload.Time)) {
-                                                const pinIndex = pins.indexOf(payload.Time);
+                                            // 1. Render Pin if present (highest priority)
+                                            if (pins.includes(time)) {
+                                                const pinIndex = pins.indexOf(time);
                                                 let prevValue: number | undefined;
                                                 if (pinIndex > 0) {
                                                     const prevTime = pins[pinIndex - 1];
@@ -192,7 +200,7 @@ export function ChartArea({
 
                                                 return (
                                                     <GraphPin
-                                                        key={`${payload.Time}-${s}`}
+                                                        key={`${time}-${s}`}
                                                         cx={cx}
                                                         cy={cy}
                                                         value={value}
@@ -202,12 +210,26 @@ export function ChartArea({
                                                 );
                                             }
 
-                                            // 2. Render Min/Max Dot (CustomDot logic)
-                                            if (minMaxTimes.has(payload.Time)) {
-                                                return <CustomDot {...props} minMaxTimes={minMaxTimes} />;
+                                            // 2. Check for any dot type (global, peak, or valley)
+                                            const peakTimes = peakTimesMap.get(s) || new Set<number>();
+                                            const valleyTimes = valleyTimesMap.get(s) || new Set<number>();
+                                            const isGlobal = globalMinMaxTimes.has(time);
+                                            const isPeak = peakTimes.has(time);
+                                            const isValley = valleyTimes.has(time);
+
+                                            if (isGlobal || isPeak || isValley) {
+                                                return (
+                                                    <CustomDot
+                                                        {...props}
+                                                        globalMinMaxTimes={globalMinMaxTimes}
+                                                        peakTimes={peakTimes}
+                                                        valleyTimes={valleyTimes}
+                                                        dataKey={s}
+                                                    />
+                                                );
                                             }
 
-                                            return <></>;
+                                            return null;
                                         }}
                                     />
                                 ))}

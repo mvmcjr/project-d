@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ParsedData, ConversionSchema } from "@/lib/types";
 import { calculateStats } from "@/lib/stats";
+import { detectPeaksAndValleys } from "@/lib/peaks";
 import { generateColors } from "@/lib/utils";
 import { detectUnit } from "@/lib/conversions";
 import { ChartSidebar } from "./chart/chart-sidebar";
@@ -200,7 +201,7 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
         return statsObj;
     }, [viewData, selectedSafeSeries]);
 
-    const minMaxTimes = React.useMemo(() => {
+    const globalMinMaxTimes = React.useMemo(() => {
         const times = new Set<number>();
         selectedSafeSeries.forEach((safeKey) => {
             const stat = stats[safeKey];
@@ -213,6 +214,20 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
         });
         return times;
     }, [stats, selectedSafeSeries]);
+
+    // OPTIMIZATION: Compute peak/valley times per channel using 5% threshold
+    const { peakTimesMap, valleyTimesMap } = React.useMemo(() => {
+        const peaks = new Map<string, Set<number>>();
+        const valleys = new Map<string, Set<number>>();
+
+        selectedSafeSeries.forEach((safeKey) => {
+            const result = detectPeaksAndValleys(viewData, safeKey, 5);
+            peaks.set(safeKey, result.peakTimes);
+            valleys.set(safeKey, result.valleyTimes);
+        });
+
+        return { peakTimesMap: peaks, valleyTimesMap: valleys };
+    }, [viewData, selectedSafeSeries]);
 
     const chartConfig = React.useMemo(() => {
         const config: ChartConfig = {};
@@ -399,7 +414,9 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                         selectedSafeSeries={selectedSafeSeries}
                         activeUnits={activeUnits}
                         uniqueUnits={uniqueUnits}
-                        minMaxTimes={minMaxTimes}
+                        globalMinMaxTimes={globalMinMaxTimes}
+                        peakTimesMap={peakTimesMap}
+                        valleyTimesMap={valleyTimesMap}
                         left={left}
                         right={right}
                         refAreaLeft={refAreaLeft}
