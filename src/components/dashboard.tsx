@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { detectUnit, convertValue } from "@/lib/conversions";
 import { useLogProcessor, DEFAULT_PREFERENCES } from "@/hooks/use-log-processor";
 import { DashboardHeader } from "@/components/dashboard/header";
+import { useChartState } from "@/hooks/use-chart-state";
 
 export function Dashboard() {
     const [data, setData] = React.useState<ParsedData | null>(null);
@@ -23,6 +24,9 @@ export function Dashboard() {
         processedData,
         conversionMetadata
     } = useLogProcessor(data);
+
+    // Initialize Chart State using processedData
+    const chartState = useChartState(processedData, conversionMetadata);
 
     const lastFetchedUrl = React.useRef<string | null>(null);
 
@@ -158,10 +162,24 @@ export function Dashboard() {
                 onReset={handleReset}
                 dataHeaders={data.headers}
                 onCalculatePower={handleCalculatePower}
+
+                // Chart Controls
+                showDataTable={chartState.showDataTable}
+                setShowDataTable={chartState.setShowDataTable}
+                exportToCSV={chartState.exportToCSV}
+                isZoomed={chartState.left !== null || chartState.right !== null}
+                onResetZoom={chartState.zoomOut}
+                compareChannels={data.headers}
+                isCompareMode={chartState.isCompareMode}
+                onEnableCompare={chartState.handleEnableCompare}
+                onDisableCompare={chartState.handleDisableCompare}
             />
 
             <main className="flex-1 overflow-hidden p-4 bg-muted/20">
-                <ChartView data={processedData} conversionMetadata={conversionMetadata} />
+                <ChartView
+                    chartState={chartState}
+                    conversionMetadata={conversionMetadata}
+                />
             </main>
         </div>
     );

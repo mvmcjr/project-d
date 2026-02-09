@@ -18,8 +18,6 @@ import {
     ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { RotateCcw } from "lucide-react";
 import {
     ChartConfig,
     ChartContainer,
@@ -108,12 +106,6 @@ export function ChartArea({
             <ContextMenu>
                 <CardContent className="flex-1 p-0 relative group">
                     <div className="absolute top-2 right-2 z-20">
-                        {(left !== null || right !== null) && (
-                            <Button variant="outline" size="sm" onClick={zoomOut} className="gap-2 bg-background/80 backdrop-blur-sm">
-                                <RotateCcw className="h-4 w-4" />
-                                Reset Zoom
-                            </Button>
-                        )}
                     </div>
 
                     <ContextMenuTrigger className="h-full w-full block">

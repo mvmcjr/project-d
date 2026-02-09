@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { RefreshCcw, Settings, Check, Moon, Sun } from "lucide-react";
+import { RefreshCcw, Settings, Check, Moon, Sun, TableProperties, Download, RotateCcw } from "lucide-react";
 import { useTheme } from "next-themes";
 import { VirtualDynoDialog } from "@/components/virtual-dyno-dialog";
+import { CompareDialog } from "@/components/compare-dialog";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -26,6 +27,18 @@ interface DashboardHeaderProps {
     onReset: () => void;
     dataHeaders: string[];
     onCalculatePower: (rpmHeader: string, torqueHeader: string, targetUnit: string) => void;
+    // New Props for Chart Controls
+    showDataTable: boolean;
+    setShowDataTable: (show: boolean) => void;
+    exportToCSV: () => void;
+    // Zoom
+    isZoomed: boolean;
+    onResetZoom: () => void;
+    // Compare
+    compareChannels: string[];
+    isCompareMode: boolean;
+    onEnableCompare: (rpmKey: string, pedalKey: string) => void;
+    onDisableCompare: () => void;
 }
 
 export function DashboardHeader({
@@ -34,7 +47,16 @@ export function DashboardHeader({
     setUnit,
     onReset,
     dataHeaders,
-    onCalculatePower
+    onCalculatePower,
+    showDataTable,
+    setShowDataTable,
+    exportToCSV,
+    isZoomed,
+    onResetZoom,
+    compareChannels,
+    isCompareMode,
+    onEnableCompare,
+    onDisableCompare
 }: DashboardHeaderProps) {
     const { setTheme, theme } = useTheme();
 
@@ -49,6 +71,42 @@ export function DashboardHeader({
                 </div>
 
                 <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowDataTable(!showDataTable)}
+                        className="hidden md:flex gap-2"
+                    >
+                        <TableProperties className="h-4 w-4" />
+                        <span className="hidden lg:inline">{showDataTable ? "Hide Table" : "Show Table"}</span>
+                    </Button>
+
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={exportToCSV}
+                        className="hidden md:flex gap-2"
+                    >
+                        <Download className="h-4 w-4" />
+                        <span className="hidden lg:inline">Export CSV</span>
+                    </Button>
+
+                    <CompareDialog
+                        channels={compareChannels}
+                        onEnableCompare={onEnableCompare}
+                        isCompareMode={isCompareMode}
+                        onDisableCompare={onDisableCompare}
+                    />
+
+                    {isZoomed && (
+                        <Button variant="outline" size="sm" onClick={onResetZoom} className="gap-2">
+                            <RotateCcw className="h-4 w-4" />
+                            <span className="hidden lg:inline">Reset Zoom</span>
+                        </Button>
+                    )}
+
+                    <div className="w-px h-4 bg-border mx-1" />
+
                     <VirtualDynoDialog
                         channels={dataHeaders}
                         onCalculate={onCalculatePower}
