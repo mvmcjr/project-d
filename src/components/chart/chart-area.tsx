@@ -9,6 +9,7 @@ import {
     CartesianGrid,
     Legend,
     ReferenceArea,
+    ReferenceLine,
 } from "recharts";
 import {
     ContextMenu,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/chart";
 import { CustomDot } from "./custom-dot";
 import { GraphPin } from "./graph-pin";
+import { SyncedTooltip } from "./synced-tooltip";
 
 interface ChartAreaProps {
     chartData: Record<string, number | string | null>[];
@@ -53,6 +55,8 @@ interface ChartAreaProps {
     onAddPin: (time: number) => void;
     onRemovePin: (time: number) => void;
     onHoverTimeChange?: (time: number | null) => void;
+    /** Synced hover time from another tab (for visual reference line) */
+    syncedHoverTime?: number | null;
 }
 
 export function ChartArea({
@@ -75,7 +79,8 @@ export function ChartArea({
     pins,
     onAddPin,
     onRemovePin,
-    onHoverTimeChange
+    onHoverTimeChange,
+    syncedHoverTime
 }: ChartAreaProps) {
     const lastActiveTimeRef = React.useRef<number | null>(null);
 
@@ -250,6 +255,26 @@ export function ChartArea({
 
                                 {refAreaLeft !== null && refAreaRight !== null && (
                                     <ReferenceArea yAxisId={uniqueUnits[0]} x1={refAreaLeft} x2={refAreaRight} strokeOpacity={0.3} fill="hsl(var(--foreground))" fillOpacity={0.1} />
+                                )}
+
+                                {/* Synced Hover Line with Tooltip from another tab */}
+                                {syncedHoverTime !== null && syncedHoverTime !== undefined && (
+                                    <ReferenceLine
+                                        x={syncedHoverTime}
+                                        yAxisId={uniqueUnits[0]}
+                                        stroke="#f97316"
+                                        strokeWidth={2}
+                                        strokeDasharray="4 4"
+                                        ifOverflow="extendDomain"
+                                        label={
+                                            <SyncedTooltip
+                                                syncedTime={syncedHoverTime}
+                                                chartData={chartData}
+                                                selectedSeries={selectedSafeSeries}
+                                                chartConfig={chartConfig}
+                                            />
+                                        }
+                                    />
                                 )}
                             </LineChart>
                         </ChartContainer>

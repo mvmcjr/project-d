@@ -14,6 +14,9 @@ import { TableProperties, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { CompareDialog } from "@/components/compare-dialog";
+import { useBroadcastSync } from "@/hooks/use-broadcast-sync";
+import { findPullStart, applyTimeOffset } from "@/lib/sync-utils";
 
 interface ChartViewProps {
     data: ParsedData;
@@ -25,7 +28,7 @@ const sanitizeKey = (key: string) => key.replace(/[^a-zA-Z0-9]/g, "_");
 
 export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
     // 1. Sanitize Data & Headers
-    const { processedData, headerMap, safeHeaders } = React.useMemo(() => {
+    const { processedData, headerMap, originalToSafe, safeHeaders } = React.useMemo(() => {
         const safeMap: Record<string, string> = { "Time": "Time" };
         const reverseMap: Record<string, string> = { "Time": "Time" };
         const numeric: string[] = [];
@@ -71,7 +74,7 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
             return newRow;
         });
 
-        return { processedData: newData, headerMap: reverseMap, safeHeaders: numeric };
+        return { processedData: newData, headerMap: reverseMap, originalToSafe: safeMap, safeHeaders: numeric };
     }, [data]);
 
     const [selectedSafeSeries, setSelectedSafeSeries] = React.useState<string[]>([]);
@@ -97,10 +100,73 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
 
     // Hover & Table State
     const [hoveredTime, setHoveredTime] = React.useState<number | null>(null);
+    const [syncedHoverTime, setSyncedHoverTime] = React.useState<number | null>(null);
     const [showDataTable, setShowDataTable] = React.useState(false);
 
     // Track previous headers to detect new additions
     const prevSafeHeadersRef = React.useRef<string[]>([]);
+
+    // Compare Mode State
+    const [isCompareMode, setIsCompareMode] = React.useState(false);
+    const [timeOffset, setTimeOffset] = React.useState(0);
+    const [compareChannelName] = React.useState("project-d-sync");
+
+    // Sync Hook
+    // Sync Hook
+    const { broadcastHover, broadcastZoom, broadcastSelection } = useBroadcastSync({
+        channelName: compareChannelName,
+        enabled: isCompareMode,
+        onHover: (time) => {
+            // Received time is from another tab - show as synced reference line
+            setSyncedHoverTime(time);
+        },
+        onZoom: (left, right) => {
+            setLeft(left);
+            setRight(right);
+        },
+        onSelection: (selection) => {
+            // Filter selection to ensure we only select keys that exist in our current log
+            // This prevents errors if logs have different channels
+            const validSelection = selection.filter(key => safeHeaders.includes(key));
+            setSelectedSafeSeries(validSelection);
+        }
+    });
+
+    // Broadcast selection changes
+    React.useEffect(() => {
+        if (isCompareMode) {
+            broadcastSelection(selectedSafeSeries);
+        }
+    }, [selectedSafeSeries, isCompareMode, broadcastSelection]);
+
+    const handleEnableCompare = (rpmKey: string, pedalKey: string) => {
+        // Convert original header keys to safe keys used in processedData
+        const safeRpmKey = originalToSafe[rpmKey];
+        const safePedalKey = originalToSafe[pedalKey];
+
+        if (!safeRpmKey || !safePedalKey) {
+            toast.error(`Invalid channel selected. RPM: ${safeRpmKey ? 'OK' : 'Not found'}, Pedal: ${safePedalKey ? 'OK' : 'Not found'}`);
+            return;
+        }
+
+        const { offset, maxPedal } = findPullStart(processedData, safePedalKey, safeRpmKey);
+        if (offset !== null) {
+            setTimeOffset(offset);
+            setIsCompareMode(true);
+            toast.success(`Compare Mode Enabled. Time offset: ${offset.toFixed(2)}s`);
+
+            // Initial broadcast of current selection to sync up
+            broadcastSelection(selectedSafeSeries);
+        } else {
+            toast.error(`Could not detect pull start (Pedal > 95%). Max detected: ${maxPedal.toFixed(1)}%`);
+        }
+    };
+
+    const handleDisableCompare = () => {
+        setIsCompareMode(false);
+        setTimeOffset(0);
+        toast.info("Compare Mode Disabled");
+    };
 
     // Auto-select logic
     React.useEffect(() => {
@@ -154,13 +220,21 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
     }, []);
 
     const viewData = React.useMemo(() => {
-        if (left === null || right === null) return processedData;
-        return processedData.filter(d => {
+        // Apply offset if in compare mode
+        let dataToView = processedData;
+
+        if (isCompareMode && timeOffset !== 0) {
+            dataToView = applyTimeOffset(processedData, timeOffset);
+        }
+
+        if (left === null || right === null) return dataToView;
+
+        return dataToView.filter(d => {
             const t = d.Time;
             if (typeof t !== 'number') return false;
             return t >= left && t <= right;
         });
-    }, [processedData, left, right]);
+    }, [processedData, left, right, isCompareMode, timeOffset]);
 
     const chartData = React.useMemo(() => {
         if (viewData.length < 2000) return viewData;
@@ -290,14 +364,16 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
         setRight(newRight);
         setRefAreaLeft(null);
         setRefAreaRight(null);
-    }, [refAreaLeft, refAreaRight]);
+        broadcastZoom(newLeft, newRight);
+    }, [refAreaLeft, refAreaRight, broadcastZoom]);
 
     const zoomOut = React.useCallback(() => {
         setLeft(null);
         setRight(null);
         setRefAreaLeft(null);
         setRefAreaRight(null);
-    }, []);
+        broadcastZoom(null, null);
+    }, [broadcastZoom]);
 
     const handleMouseDown = React.useCallback((e: unknown) => {
         if (e) setRefAreaLeft((e as { activeLabel: number }).activeLabel);
@@ -406,6 +482,12 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                             <Download className="h-4 w-4" />
                             Export CSV
                         </Button>
+                        <CompareDialog
+                            channels={data.headers}
+                            onEnableCompare={handleEnableCompare}
+                            isCompareMode={isCompareMode}
+                            onDisableCompare={handleDisableCompare}
+                        />
                     </div>
 
                     <ChartArea
@@ -428,7 +510,11 @@ export function ChartView({ data, conversionMetadata = {} }: ChartViewProps) {
                         pins={pins}
                         onAddPin={addPin}
                         onRemovePin={removePin}
-                        onHoverTimeChange={setHoveredTime}
+                        onHoverTimeChange={(t) => {
+                            setHoveredTime(t);
+                            broadcastHover(t);
+                        }}
+                        syncedHoverTime={syncedHoverTime}
                     />
                 </div>
 
