@@ -5,6 +5,11 @@
       "source": "cloudflare/vinext",
       "sourceType": "github",
       "computedHash": "4524e7c1fdce88dd9bea2aae30cf7895df5e8d0839eebdb5191c30cf2c694151"
+    },
+    "shadcn": {
+      "source": "shadcn/ui",
+      "sourceType": "github",
+      "computedHash": "1ec42c9b918b315d8e5c6c856b78c3c4725fc93dea30b9b7e9975c69848fcce6"
     }
   }
 }
