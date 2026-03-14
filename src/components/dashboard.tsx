@@ -41,6 +41,7 @@ export function Dashboard() {
                     if (!response.ok) {
                         throw new Error(`Failed to fetch: ${response.statusText}`);
                     }
+                    const logName = response.headers.get("X-Log-Name");
                     const csvText = await response.text();
 
                     Papa.parse(csvText, {
@@ -76,7 +77,7 @@ export function Dashboard() {
                             setPreferences(newPreferences);
 
                             setData({
-                                fileName: "Bootmod3 Log",
+                                fileName: logName || "Bootmod3 Log",
                                 headers,
                                 data: data,
                                 meta: results.meta,

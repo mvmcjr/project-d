@@ -20,14 +20,18 @@ export async function GET(request: NextRequest) {
         // Logic to transform /log to /dlog
         // https://bootmod3.net/log?id=xyz -> https://bootmod3.net/dlog?id=xyz
         let fetchUrl = url.toString();
+        let htmlUrl: string | null = null;
         if (url.pathname === "/log") {
+            htmlUrl = url.toString(); // capture the /log URL before rewriting
             url.pathname = "/dlog";
             fetchUrl = url.toString();
         }
 
-        // Fetch from bootmod3 - server-side fetch doesn't send the browser's referer by default, 
-        // or we can set a neutral one if needed.
-        const response = await fetch(fetchUrl);
+        // Fetch CSV (and optionally the HTML page for the log name) in parallel.
+        const [response, htmlResponse] = await Promise.all([
+            fetch(fetchUrl),
+            htmlUrl ? fetch(htmlUrl) : Promise.resolve(null),
+        ]);
 
         if (!response.ok) {
             return NextResponse.json(
@@ -38,12 +42,27 @@ export async function GET(request: NextRequest) {
 
         const csvText = await response.text();
 
+        // Extract log name from the HTML page if available.
+        let logName: string | null = null;
+        if (htmlResponse?.ok) {
+            const html = await htmlResponse.text();
+            const match = html.match(/<pre[^>]*id="log-name"[^>]*>([^<]*)<\/pre>/i);
+            if (match) {
+                logName = match[1].trim();
+            }
+        }
+
+        const responseHeaders: Record<string, string> = {
+            "Content-Type": "text/csv",
+            "Content-Disposition": `attachment; filename="bootmod3_log.csv"`,
+        };
+        if (logName) {
+            responseHeaders["X-Log-Name"] = logName;
+        }
+
         return new NextResponse(csvText, {
             status: 200,
-            headers: {
-                "Content-Type": "text/csv",
-                "Content-Disposition": `attachment; filename="bootmod3_log.csv"`,
-            },
+            headers: responseHeaders,
         });
 
     } catch (error) {

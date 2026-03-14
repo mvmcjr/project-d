@@ -114,7 +114,7 @@ export function FileUpload({ onDataParsed }: FileUploadProps) {
                 const data = await response.json().catch(() => ({}));
                 throw new Error(data.error || `Failed to fetch: ${response.statusText}`);
             }
-
+            const logName = response.headers.get("X-Log-Name");
             const csvText = await response.text();
 
             Papa.parse(csvText, {
@@ -143,7 +143,7 @@ export function FileUpload({ onDataParsed }: FileUploadProps) {
                     }
 
                     onDataParsed({
-                        fileName: "Bootmod3 Log",
+                        fileName: logName || "Bootmod3 Log",
                         headers,
                         data,
                         meta: results.meta,
