@@ -27,15 +27,14 @@
     "@types/papaparse": "^5.5.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.563.0",
-    "next": "16.1.6",
+    "lucide-react": "^0.577.0",
     "next-themes": "^0.4.6",
     "papaparse": "^5.5.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.7.0",
+    "recharts": "^3.8.0",
     "sonner": "^2.0.7",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.28.0",
@@ -44,20 +43,15 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-rsc": "^0.5.21",
-    "babel-plugin-react-compiler": "1.0.0",
-    "baseline-browser-mapping": "^2.9.19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "baseline-browser-mapping": "^2.10.8",
+    "eslint": "^10",
     "react-server-dom-webpack": "^19.2.4",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5",
     "vinext": "^0.0.30",
     "vite": "^7.0.0",
-    "wrangler": "^4.63.0"
-  },
-  "overrides": {
-    "react-is": "^19.0.0-rc-69d4b800-20241021"
+    "wrangler": "^4.73.0"
   },
   "type": "module"
 }

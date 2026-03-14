@@ -1,11 +1,9 @@
-import type { NextConfig } from "next";
+import type { VinextConfig } from "vinext";
 
-const nextConfig: NextConfig = {
-  // output: "export", // Removed to allow API routes
+const nextConfig: VinextConfig = {
   images: {
     unoptimized: true,
   },
-  reactCompiler: true,
 };
 
 export default nextConfig;
