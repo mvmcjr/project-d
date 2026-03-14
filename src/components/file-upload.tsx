@@ -9,12 +9,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ParsedData } from "@/lib/types";
+import { AddRecentPayload } from "@/hooks/use-recent-logs";
 
 interface FileUploadProps {
     onDataParsed: (data: ParsedData) => void;
+    onAddRecent?: (payload: AddRecentPayload) => void;
 }
 
-export function FileUpload({ onDataParsed }: FileUploadProps) {
+export function FileUpload({ onDataParsed, onAddRecent }: FileUploadProps) {
     const [isDragActive, setIsDragActive] = React.useState(false);
     const [isLoading, setIsLoading] = React.useState(false);
     const [error, setError] = React.useState<string | null>(null);
@@ -30,46 +32,53 @@ export function FileUpload({ onDataParsed }: FileUploadProps) {
         setError(null);
         setIsLoading(true);
 
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            dynamicTyping: true,
-            complete: (results) => {
-                setIsLoading(false);
-                if (results.errors.length > 0) {
-                    console.warn("CSV Parsing errors:", results.errors);
-                    if (results.data.length === 0) {
-                        setError("Failed to parse CSV. Check the format.");
-                        toast.error("Parsing failed");
+        file.text().then((csvText) => {
+            Papa.parse(csvText, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: true,
+                complete: (results) => {
+                    setIsLoading(false);
+                    if (results.errors.length > 0) {
+                        console.warn("CSV Parsing errors:", results.errors);
+                        if (results.data.length === 0) {
+                            setError("Failed to parse CSV. Check the format.");
+                            toast.error("Parsing failed");
+                            return;
+                        }
+                        toast.warning("CSV parsed with some warnings.");
+                    }
+
+                    const headers = results.meta.fields || [];
+                    const data = results.data as Record<string, number | string | null>[];
+
+                    if (headers.length === 0 || data.length === 0) {
+                        setError("CSV file appears to be empty.");
+                        toast.error("Empty CSV");
                         return;
                     }
-                    toast.warning("CSV parsed with some warnings.");
-                }
 
-                const headers = results.meta.fields || [];
-                const data = results.data as Record<string, number | string | null>[];
-
-                if (headers.length === 0 || data.length === 0) {
-                    setError("CSV file appears to be empty.");
-                    toast.error("Empty CSV");
-                    return;
-                }
-
-                onDataParsed({
-                    fileName: file.name,
-                    headers,
-                    data,
-                    meta: results.meta,
-                });
-                toast.success("File uploaded successfully");
-            },
-            error: (err) => {
-                setIsLoading(false);
-                setError(err.message);
-                toast.error("Error parsing file");
-            },
+                    onDataParsed({
+                        fileName: file.name,
+                        headers,
+                        data,
+                        meta: results.meta,
+                    });
+                    onAddRecent?.({ type: "file", name: file.name, rowCount: data.length, csvText });
+                    toast.success("File uploaded successfully");
+                },
+                error: (err) => {
+                    setIsLoading(false);
+                    setError(err.message);
+                    toast.error("Error parsing file");
+                },
+            });
+        }).catch(() => {
+            setIsLoading(false);
+            setError("Failed to read file.");
+            toast.error("Error reading file");
         });
-    }, [onDataParsed]);
+    }, [onDataParsed, onAddRecent]);
 
     const onDrop = React.useCallback((e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -148,6 +157,7 @@ export function FileUpload({ onDataParsed }: FileUploadProps) {
                         data,
                         meta: results.meta,
                     });
+                    onAddRecent?.({ type: "url", name: logName || "Bootmod3 Log", rowCount: data.length, csvText, url: importUrl });
                     toast.success("Log imported successfully");
                 },
                 error: (err: Error) => {

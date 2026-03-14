@@ -11,10 +11,15 @@ import { detectUnit, convertValue } from "@/lib/conversions";
 import { useLogProcessor, DEFAULT_PREFERENCES } from "@/hooks/use-log-processor";
 import { DashboardHeader } from "@/components/dashboard/header";
 import { useChartState } from "@/hooks/use-chart-state";
+import { useRecentLogs, getRecentCsv } from "@/hooks/use-recent-logs";
+import { RecentLogs } from "@/components/recent-logs";
+import { RecentLog } from "@/lib/types";
 
 export function Dashboard() {
     const [data, setData] = React.useState<ParsedData | null>(null);
     const searchParams = useSearchParams();
+
+    const { recentLogs, addRecentLog, removeRecentLog, clearRecentLogs } = useRecentLogs();
 
     // Custom hook for processing data and managing unit preferences
     const {
@@ -30,72 +35,99 @@ export function Dashboard() {
 
     const lastFetchedUrl = React.useRef<string | null>(null);
 
+    /** Parse a CSV string and load it as the active dataset. Returns the parsed data or null on failure. */
+    const loadFromCsv = React.useCallback((csvText: string, fileName: string): Promise<ParsedData | null> => {
+        return new Promise((resolve) => {
+            Papa.parse(csvText, {
+                header: true,
+                skipEmptyLines: true,
+                dynamicTyping: true,
+                complete: (results) => {
+                    const headers = results.meta.fields || [];
+                    const rows = results.data as Record<string, number | string | null>[];
+
+                    if (headers.length === 0 || rows.length === 0) {
+                        resolve(null);
+                        return;
+                    }
+
+                    const newPreferences = { ...DEFAULT_PREFERENCES };
+                    headers.forEach(header => {
+                        const detected = detectUnit(header);
+                        if (detected && detected.type !== "unknown") {
+                            newPreferences[detected.type] = detected.unit;
+                        }
+                    });
+                    setPreferences(newPreferences);
+
+                    const parsed: ParsedData = { fileName, headers, data: rows, meta: results.meta };
+                    setData(parsed);
+                    resolve(parsed);
+                },
+                error: () => resolve(null),
+            });
+        });
+    }, [setPreferences]);
+
+    /** Fetch a Bootmod3 URL via proxy and load it. */
+    const loadFromUrl = React.useCallback(async (url: string, toastId?: string | number) => {
+        const id = toastId ?? toast.loading("Fetching data from Bootmod3...");
+        try {
+            const response = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
+            if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
+
+            const logName = response.headers.get("X-Log-Name");
+            const csvText = await response.text();
+            const parsed = await loadFromCsv(csvText, logName || "Bootmod3 Log");
+
+            if (!parsed) {
+                toast.error("CSV file from URL appears to be empty.", { id });
+                return;
+            }
+
+            toast.success("Log imported successfully", { id });
+            return { csvText, fileName: parsed.fileName, rowCount: parsed.data.length };
+        } catch (error) {
+            console.error("Fetch error:", error);
+            toast.error("Failed to import from URL", { id });
+        }
+    }, [loadFromCsv]);
+
     React.useEffect(() => {
         const url = searchParams.get("url");
         if (url && url !== lastFetchedUrl.current) {
             lastFetchedUrl.current = url;
-            const fetchData = async () => {
-                const toastId = toast.loading("Fetching data from Bootmod3...");
-                try {
-                    const response = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
-                    if (!response.ok) {
-                        throw new Error(`Failed to fetch: ${response.statusText}`);
-                    }
-                    const logName = response.headers.get("X-Log-Name");
-                    const csvText = await response.text();
-
-                    Papa.parse(csvText, {
-                        header: true,
-                        skipEmptyLines: true,
-                        dynamicTyping: true,
-                        complete: (results) => {
-                            if (results.errors.length > 0) {
-                                console.warn("CSV Parsing errors:", results.errors);
-                                if (results.data.length === 0) {
-                                    toast.error("Failed to parse CSV from URL", { id: toastId });
-                                    return;
-                                }
-                                toast.warning("CSV parsed with some warnings.", { id: toastId });
-                            }
-
-                            const headers = results.meta.fields || [];
-                            const data = results.data as Record<string, number | string | null>[];
-
-                            if (headers.length === 0 || data.length === 0) {
-                                toast.error("CSV file from URL appears to be empty.", { id: toastId });
-                                return;
-                            }
-
-                            // Update preferences based on file units
-                            const newPreferences = { ...DEFAULT_PREFERENCES };
-                            headers.forEach(header => {
-                                const detected = detectUnit(header);
-                                if (detected && detected.type !== "unknown") {
-                                    newPreferences[detected.type] = detected.unit;
-                                }
-                            });
-                            setPreferences(newPreferences);
-
-                            setData({
-                                fileName: logName || "Bootmod3 Log",
-                                headers,
-                                data: data,
-                                meta: results.meta,
-                            });
-                            toast.success("Log imported successfully", { id: toastId });
-                        },
-                        error: (err: Error) => {
-                            toast.error(`Error parsing CSV: ${err.message}`, { id: toastId });
-                        },
-                    });
-                } catch (error) {
-                    console.error("Fetch error:", error);
-                    toast.error("Failed to import from URL", { id: toastId });
+            loadFromUrl(url).then((result) => {
+                if (result) {
+                    addRecentLog({ type: "url", name: result.fileName, rowCount: result.rowCount, csvText: result.csvText, url });
                 }
-            };
-            fetchData();
+            });
         }
-    }, [searchParams, setPreferences]);
+    }, [searchParams, loadFromUrl, addRecentLog]);
+
+    const handleOpenRecent = React.useCallback(async (log: RecentLog) => {
+        const toastId = toast.loading(`Opening ${log.name}…`);
+        try {
+            if (log.type === "url" && log.url) {
+                await loadFromUrl(log.url, toastId);
+                return;
+            }
+            // File recent — load from IndexedDB
+            const csvText = await getRecentCsv(log.id);
+            if (!csvText) {
+                toast.error("Stored data not found. Please re-upload the file.", { id: toastId });
+                return;
+            }
+            const parsed = await loadFromCsv(csvText, log.name);
+            if (!parsed) {
+                toast.error("Failed to load stored data.", { id: toastId });
+                return;
+            }
+            toast.success(`${log.name} loaded`, { id: toastId });
+        } catch {
+            toast.error("Failed to open recent log.", { id: toastId });
+        }
+    }, [loadFromUrl, loadFromCsv]);
 
     const handleReset = () => {
         setData(null);
@@ -109,21 +141,14 @@ export function Dashboard() {
             const torque = row[torqueHeader];
 
             if (typeof rpm === 'number' && typeof torque === 'number') {
-                // 1. Detect source units
                 const torqueUnitInfo = detectUnit(torqueHeader);
 
-                // 2. Normalize to Base Units (RPM is already base, Torque needs to be Nm)
                 let torqueNm = torque;
                 if (torqueUnitInfo && torqueUnitInfo.type === 'torque') {
-                    // Convert to base (Nm)
                     torqueNm = convertValue(torque, 'torque', torqueUnitInfo.unit, 'Nm');
                 }
 
-                // 3. Calculate Power in kW (Base Unit)
-                // Power (kW) = Torque (Nm) * RPM / 9549
                 const powerKw = (torqueNm * rpm) / 9549;
-
-                // 4. Convert kW to Target Unit
                 const finalPower = convertValue(powerKw, 'power', 'kW', targetUnit);
 
                 return { ...row, [`Power [${targetUnit}]`]: finalPower };
@@ -149,7 +174,16 @@ export function Dashboard() {
                         Vehicle Data Analysis & Visualization
                     </p>
                 </div>
-                <FileUpload onDataParsed={setData} />
+                <FileUpload
+                    onDataParsed={setData}
+                    onAddRecent={addRecentLog}
+                />
+                <RecentLogs
+                    logs={recentLogs}
+                    onOpen={handleOpenRecent}
+                    onRemove={removeRecentLog}
+                    onClearAll={() => clearRecentLogs(recentLogs)}
+                />
             </div>
         );
     }
