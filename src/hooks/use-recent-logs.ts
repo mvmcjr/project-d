@@ -85,10 +85,13 @@ export interface AddRecentPayload {
 }
 
 export function useRecentLogs() {
-    const [recentLogs, setRecentLogs] = React.useState<RecentLog[]>(() => {
-        if (typeof window === "undefined") return [];
-        return loadFromStorage();
-    });
+    const [recentLogs, setRecentLogs] = React.useState<RecentLog[]>([]);
+    const [isLoaded, setIsLoaded] = React.useState(false);
+
+    React.useEffect(() => {
+        setRecentLogs(loadFromStorage());
+        setIsLoaded(true);
+    }, []);
 
     const addRecentLog = React.useCallback(
         async ({ type, name, rowCount, csvText, url }: AddRecentPayload) => {
@@ -139,5 +142,5 @@ export function useRecentLogs() {
         saveToStorage([]);
     }, []);
 
-    return { recentLogs, addRecentLog, removeRecentLog, clearRecentLogs };
+    return { recentLogs, isLoaded, addRecentLog, removeRecentLog, clearRecentLogs };
 }

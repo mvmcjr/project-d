@@ -19,7 +19,7 @@ export function Dashboard() {
     const [data, setData] = React.useState<ParsedData | null>(null);
     const searchParams = useSearchParams();
 
-    const { recentLogs, addRecentLog, removeRecentLog, clearRecentLogs } = useRecentLogs();
+    const { recentLogs, isLoaded: recentLogsLoaded, addRecentLog, removeRecentLog, clearRecentLogs } = useRecentLogs();
 
     // Custom hook for processing data and managing unit preferences
     const {
@@ -180,6 +180,7 @@ export function Dashboard() {
                 />
                 <RecentLogs
                     logs={recentLogs}
+                    isLoaded={recentLogsLoaded}
                     onOpen={handleOpenRecent}
                     onRemove={removeRecentLog}
                     onClearAll={() => clearRecentLogs(recentLogs)}

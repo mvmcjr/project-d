@@ -13,6 +13,10 @@
 /.next/
 /out/
 
+# vinext
+/.vinext/
+worker-configuration.d.ts
+
 # production
 /build
 

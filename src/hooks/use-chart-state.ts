@@ -154,6 +154,15 @@ export function useChartState(data: ParsedData | null, conversionMetadata: Recor
         else if (selectedSafeSeries.length === 0 && current.length > 0 && prev.length === 0) {
             setSelectedSafeSeries(current.slice(0, 3));
         }
+        else {
+            // Data was reset or swapped for a different file — drop selections
+            // that no longer correspond to a header (avoids stale-key lookups
+            // in headerMap on the very next render).
+            setSelectedSafeSeries(curr => {
+                const pruned = curr.filter(k => current.includes(k));
+                return pruned.length === curr.length ? curr : pruned;
+            });
+        }
         prevSafeHeadersRef.current = current;
     }, [safeHeaders, selectedSafeSeries.length]);
 

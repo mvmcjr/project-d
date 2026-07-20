@@ -1,6 +1,6 @@
-import type { VinextConfig } from "vinext";
+import type { NextConfig } from "vinext";
 
-const nextConfig: VinextConfig = {
+const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },

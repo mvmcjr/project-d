@@ -20,12 +20,16 @@ function timeAgoLabel(isoDate: string): string {
 
 interface RecentLogsProps {
     logs: RecentLog[];
+    isLoaded: boolean;
     onOpen: (log: RecentLog) => void;
     onRemove: (id: string) => void;
     onClearAll: () => void;
 }
 
-export function RecentLogs({ logs, onOpen, onRemove, onClearAll }: RecentLogsProps) {
+export function RecentLogs({ logs, isLoaded, onOpen, onRemove, onClearAll }: RecentLogsProps) {
+    // Reserve the section's height while recents load from storage, so the
+    // list popping in a tick after mount doesn't shift the layout below it.
+    if (!isLoaded) return <div className="mt-6 h-9" aria-hidden="true" />;
     if (logs.length === 0) return null;
 
     return (

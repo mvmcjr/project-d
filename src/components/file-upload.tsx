@@ -67,7 +67,7 @@ export function FileUpload({ onDataParsed, onAddRecent }: FileUploadProps) {
                     onAddRecent?.({ type: "file", name: file.name, rowCount: data.length, csvText });
                     toast.success("File uploaded successfully");
                 },
-                error: (err) => {
+                error: (err: Error) => {
                     setIsLoading(false);
                     setError(err.message);
                     toast.error("Error parsing file");
@@ -120,8 +120,9 @@ export function FileUpload({ onDataParsed, onAddRecent }: FileUploadProps) {
         try {
             const response = await fetch(`/api/proxy?url=${encodeURIComponent(importUrl)}`);
             if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || `Failed to fetch: ${response.statusText}`);
+                const data = await response.json().catch(() => null) as { error?: string } | null;
+                const message = data && typeof data === "object" && typeof data.error === "string" ? data.error : null;
+                throw new Error(message || `Failed to fetch: ${response.statusText}`);
             }
             const logName = response.headers.get("X-Log-Name");
             const csvText = await response.text();

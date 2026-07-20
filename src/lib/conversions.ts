@@ -36,6 +36,7 @@ export const UNITS = {
 };
 
 export function detectUnit(header: string): { name: string; unit: string; type: UnitType } | null {
+    if (!header) return null;
     const match = header.match(/(.*)\[(.*)\]/);
     if (!match) return null;
 
